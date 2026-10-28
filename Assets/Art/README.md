@@ -38,3 +38,43 @@ All art is original and made procedurally for this project (Blender low-poly mod
 - The models expect URP/Lit (or Simple Lit) with the Emission map on, plus **Bloom** in a Global Volume (threshold ~0.9, intensity ~0.6–1) for the lantern glows. Linear colour space is assumed.
 - The models have flat-shaded faces and painted-in shading, so they read best with soft lighting: a low lavender-pink directional light plus ambient from the skybox.
 - The wake, stars and compass use alpha. Use Unlit/Particles materials (Transparent, Additive or Alpha) for the FX.
+
+---
+
+# Astral Tide – M2 art (Aurora Reach, Ember Drift, Frost Mirror, The Cosmic Sea)
+
+Same conventions as M1: original procedural art (Blender 4.2 low-poly models with painted 1024² atlases, Pillow/numpy textures), metres, scale 1, `.meta` files included, no materials imported. Every FBX has **y up, front facing ±Z** (the player approaches along Z), and **waterline at y=0** unless noted. Named `Anchor_*` empty transforms are children of each root, so code can find glow centres with `transform.Find("Anchor_…")`.
+
+## Sky panoramas – `Sky/<Leg>/`
+All are 4096×2048 equirectangular, seamless in U, with a dim mirrored lower half (the Frost Mirror one is a crisper, brighter mirror for its still water). Import exactly like `AT_DuskShallows_SkyPano`: `Skybox/Panoramic` (Latitude Longitude, 360°), Repeat U / Clamp V, **mipmaps off**, max size 4096.
+| File | Mood |
+|---|---|
+| `AuroraReach/AT_AuroraReach_SkyPano.png` | Deep teal night, three wavy layers of teal-to-green aurora curtains (10–45° up) with soft vertical rays, stars above. |
+| `EmberDrift/AT_EmberDrift_SkyPano.png` | Deep indigo with a soft rose-ember horizon glow, dense stars and 16 painted shooting-star streaks. Add live shooting stars on top with `AT_Star` particles. |
+| `FrostMirror/AT_FrostMirror_SkyPano.png` | Silver-white horizon to ice blue to steel blue, thin silver cirrus strokes, sparse cool stars high up. |
+| `CosmicSea/AT_CosmicSea_SkyPano.png` | Deep purple with a broad magenta/violet nebula band (blue hot spots, dark dust lanes) and a dense starfield. |
+
+## Landmarks – `Landmarks/<Name>/`
+Each has `<Name>.fbx` + `<Name>_Albedo.png` (Base Map, sRGB) + `<Name>_Emission.png` (Emission Map). Use one URP/Lit material per landmark, emission colour white at intensity ~3–6 (HDR) plus Bloom, as in M1.
+| File | What | Size / anchors |
+|---|---|---|
+| `AuroraGate/AT_AuroraGate.fbx` | Two leaning stone obelisks on rock islets, joined by a glowing teal-green arch of light (a tube plus two flat ribbons), a crystal keystone and floating light shards. Crystals at the pillar bases. The ship sails through the opening. | 1,026 tris, 22 children. 39 m wide, 31.3 m tall, base y=-1.5. Opening ~24 m wide. `Anchor_GateCenter` (0, 15.8, 0) = arch centre; `Anchor_Keystone` (0, 28.7, 0). |
+| `FallenStar/AT_FallenStar.fbx` | Jagged crater-rim isle with a molten glowing crater floor, a tilted white-gold 4-point star chunk half-buried in the middle, glowing shards around the rim and dark boulders. | 404 tris, 28 children. ~32 m across, 12.8 m tall. `Anchor_StarCore` (0.6, 3.8, 0.8) = core glow; `Anchor_CraterGlow` (0, 1.6, 0). |
+| `GlacierBell/AT_GlacierBell.fbx` | Hexagonal ice tower on a spiky ice base, frost bands and glowing slit windows, an open six-pillar belfry with a glowing ice bell (open bottom, with a clapper), an ice spire and a glint crystal. | 776 tris, 37 children. 41.2 m tall, base ~22 m. `Anchor_BellGlow` (0, 28.2, 0) = bell centre (child meshes `Bell`, `BellInner` and `Clapper` can be swung for the ring); `Anchor_SpireTip` (0, 39.6, 0). |
+| `WhiteStar/AT_WhiteStar.fbx` | Floating blinding-white star for The Cosmic Sea: a faceted core, four long main rays, four diagonal rays, front/back rays and eight small splinters, plus two thin halo rings facing ±Z. Fully emissive. | 740 tris, 22 children. Floats from y=14.7 to 45.4, 30.7 m wide. `Anchor_StarCenter` (0, 30, 0). **18 separate `Shard_00…Shard_17` children** plus `Core`, `HaloRing` and `HaloRingOuter`, so code can fling the shards outward for the "shatters like glass" moment. Use emission intensity ~8+ for the blinding look. |
+
+## Obstacles and pickups – `Props/`
+All four share one atlas: `AT_Props_Albedo.png` + `AT_Props_Emission.png` (1024²). One material for all of them is fine; use emission ~3–6.
+| File | What | Size / pivot |
+|---|---|---|
+| `AT_MeteorRock.fbx` | Lumpy low-poly dark rock with glowing ember facets. | 80 tris, ~3.5×2.3×2.9 m, **pivot at the centre** (sit it half-submerged, or drift it at y≈0.3). |
+| `AT_IceFloe.fbx` | Flat irregular ice slab with a bevelled top and a small ridge. | 100 tris, ~6.5×6.2 m, top at y≈0.3, a ridge up to 1.3, underside to y=-0.6. Pivot at the waterline. |
+| `AT_StarFragment.fbx` | Faceted 4-point gold-white star crystal pickup. | 16 tris, 1 m across, 0.32 m thick, pivot at the centre, faces ±Z. Hover it ~1–1.5 m above the water and spin/bob it in code; add `AT_Star` as a glint. |
+| `AT_StarBuoy.fbx` | Sail-through four-point star buoy: a glowing star frame (bottom point clipped at y=-0.9) with a round 6 m opening, a dark float at the bottom point and two side glints. | 356 tris, 18.5 m wide, 10.5 m tall. `Anchor_PassCenter` (0, 2.4, 0) = middle of the opening (radius 3 m), so the skiff (mast 3.9 m) fits. Faces ±Z. Scale down if you want small marker buoys instead. |
+
+## FX and constellations
+| File | What | Use |
+|---|---|---|
+| `FX/AT_Current.png` | 256×1024 RGBA glowing teal current stream: U = across (alpha 0 at the edges), V = along, **tiles seamlessly in V**, with flowing streaks and sparkles. | Same as `AT_Wake`: Clamp U / Repeat V. Put it on a long quad or spline ribbon lying on the water and scroll V over time (offset.y += speed·t), additive or alpha unlit. |
+| `Sky/Constellation/AT_ConstellationLine.png` | 256×32 soft white-blue glowing line, tiles in U. | Default texture, Repeat U / Clamp V. Use a LineRenderer (Texture Mode Tile or Stretch) with an additive unlit material, width ~0.02–0.05 of the sky distance. Fade alpha in as fragments are collected. |
+| `Sky/Constellation/AT_ConstellationNode.png` | 128² star node: bright core, small 4-point glint, thin ring (RGBA). | Sprite (Single), 100 PPU, no mipmaps. One per constellation star; dim until its fragment is found, then brighten or pulse. |
