@@ -152,6 +152,46 @@ public static class BuildWeb {
     m.vertices = new[]{ new Vector3(-h, 0, -h), new Vector3(-h, 0, h), new Vector3(h, 0, h), new Vector3(h, 0, -h) };
     m.triangles = new[]{ 0, 1, 2, 0, 2, 3 }; m.RecalculateBounds(); m.bounds = new Bounds(Vector3.zero, new Vector3(size, 2, size)); return m;
   }
+  /// <summary>M2 sea: concentric rings around the camera, dense near the centre (about 1 m) and coarse toward the horizon
+  /// (~4 km), so the swell can be displaced in the vertex shader. Bounds are padded for the displacement.</summary>
+  static Mesh SeaRings(int rings, int segs){
+    var m = new Mesh{ name = "SeaRings" }; var v = new List<Vector3>{ Vector3.zero }; var t = new List<int>();
+    float r = 0f, step = 0.8f;
+    for (int i = 1; i <= rings; i++){
+      r += step; step *= 1.035f; float rr = i == rings ? Mathf.Max(r, 4000f) : r;
+      for (int k = 0; k < segs; k++){ float a = k * Mathf.PI * 2f / segs + (i % 2) * Mathf.PI / segs; v.Add(new Vector3(Mathf.Cos(a) * rr, 0, Mathf.Sin(a) * rr)); }
+    }
+    for (int k = 0; k < segs; k++) t.AddRange(new[]{ 0, 1 + (k + 1) % segs, 1 + k });
+    for (int i = 1; i < rings; i++){
+      int b0 = 1 + (i - 1) * segs, b1 = 1 + i * segs;
+      for (int k = 0; k < segs; k++){ int k1 = (k + 1) % segs; t.AddRange(new[]{ b0 + k, b0 + k1, b1 + k1, b0 + k, b1 + k1, b1 + k }); }
+    }
+    m.indexFormat = v.Count > 65000 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+    m.SetVertices(v); m.SetTriangles(t, 0); m.RecalculateBounds(); m.bounds = new Bounds(Vector3.zero, new Vector3(8200, 40, 8200)); return m;
+  }
+  /// <summary>The water mask lid: the convex outline (XZ) of the hull's vertices around the waterline, shrunk a little, as a flat
+  /// polygon at lidY. Drawn depth-only between the ship and the sea, so no water shows inside the hull.</summary>
+  static Mesh HullLid(Transform model, float lidY){
+    var pts = new List<Vector2>();
+    foreach (var mf in model.GetComponentsInChildren<MeshFilter>()){
+      if (!mf.sharedMesh || mf.GetComponentInParent<Transform>().name.Contains("Sail") || mf.name.Contains("Sail") || mf.name.Contains("Lantern")) continue;
+      foreach (var vv in mf.sharedMesh.vertices){ var lp = model.InverseTransformPoint(mf.transform.TransformPoint(vv)); if (lp.y > -0.3f && lp.y < lidY + 0.45f) pts.Add(new Vector2(lp.x, lp.z)); }
+    }
+    if (pts.Count < 3){ Debug.LogWarning("[Setup] hull lid: no waterline vertices"); return null; }
+    pts = pts.Distinct().OrderBy(p => p.x).ThenBy(p => p.y).ToList();
+    float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    var hull = new List<Vector2>();
+    foreach (var p in pts){ while (hull.Count >= 2 && Cross(hull[hull.Count - 2], hull[hull.Count - 1], p) <= 0) hull.RemoveAt(hull.Count - 1); hull.Add(p); }
+    int lower = hull.Count + 1;
+    for (int i = pts.Count - 2; i >= 0; i--){ var p = pts[i]; while (hull.Count >= lower && Cross(hull[hull.Count - 2], hull[hull.Count - 1], p) <= 0) hull.RemoveAt(hull.Count - 1); hull.Add(p); }
+    hull.RemoveAt(hull.Count - 1);
+    var c = Vector2.zero; foreach (var p in hull) c += p; c /= hull.Count;
+    var v = new List<Vector3>{ new Vector3(c.x, lidY, c.y) }; var t = new List<int>();
+    foreach (var p in hull){ var q = c + (p - c) * 0.95f; v.Add(new Vector3(q.x, lidY, q.y)); }
+    for (int i = 0; i < hull.Count; i++){ t.Add(0); t.Add(1 + i); t.Add(1 + (i + 1) % hull.Count); }
+    var m = new Mesh{ name = "HullLid" }; m.SetVertices(v); m.SetTriangles(t, 0); m.RecalculateNormals(); m.RecalculateBounds();
+    Debug.Log($"[Setup] hull lid: {hull.Count} points, {m.bounds.size.x:F2} x {m.bounds.size.z:F2} m at y={lidY:F2}"); return m;
+  }
   static Mesh SkySphere(int lon, int lat){
     var m = new Mesh{ name = "SkySphere" }; var v = new List<Vector3>(); var t = new List<int>();
     for (int y = 0; y <= lat; y++) for (int x = 0; x <= lon; x++){ float a = x * Mathf.PI * 2f / lon, b = y * Mathf.PI / lat; v.Add(new Vector3(Mathf.Sin(b) * Mathf.Cos(a), Mathf.Cos(b), Mathf.Sin(b) * Mathf.Sin(a))); }
@@ -189,11 +229,11 @@ public static class BuildWeb {
   public static void SetupScene(){
     Directory.CreateDirectory(Gen); Directory.CreateDirectory("Assets/Scenes");
     EnsureURP();
-    var leg = Leg.DuskShallows;
+    var leg = Leg.All[0];
     // ---- Art Dev's M1 set, by name (null = procedural fallback) ----
     var skiff = Find<GameObject>("Assets/Art", "AT_Skiff"); var skiffAlb = Find<Texture2D>("Assets/Art", "AT_Skiff_Albedo"); var skiffEm = Find<Texture2D>("Assets/Art", "AT_Skiff_Emission");
     var spireFbx = Find<GameObject>("Assets/Art", "AT_LanternSpire"); var spireAlb = Find<Texture2D>("Assets/Art", "AT_LanternSpire_Albedo"); var spireEm = Find<Texture2D>("Assets/Art", "AT_LanternSpire_Emission");
-    var pano = Find<Texture2D>("Assets/Art", "AT_DuskShallows_SkyPano"); var starTex = Find<Texture2D>("Assets/Art", "AT_Star"); var starfield = Find<Texture2D>("Assets/Art", "AT_Starfield");
+    var panos = Leg.All.Select(l => Find<Texture2D>("Assets/Art", l.panoKey)).ToArray(); var pano = panos.FirstOrDefault(x => x); var starTex = Find<Texture2D>("Assets/Art", "AT_Star"); var starfield = Find<Texture2D>("Assets/Art", "AT_Starfield");
     var wakeTex = Find<Texture2D>("Assets/Art", "AT_Wake");
 
     var skyMat = Mat("SkyMat", "AstralTide/Sky", 1000);
@@ -203,6 +243,7 @@ public static class BuildWeb {
       panoMat = Mat("SkyPanoMat", "Skybox/Panoramic", 1000, m => { m.SetTexture("_MainTex", pano); m.SetFloat("_Mapping", 1); m.SetFloat("_ImageType", 0); m.SetFloat("_Layout", 0); m.SetFloat("_MirrorOnBack", 0); m.SetFloat("_Exposure", 1f); m.SetColor("_Tint", new Color(0.5f, 0.5f, 0.5f, 0.5f)); m.SetFloat("_Rotation", 0f); });
     }
     var seaMat = Mat("SeaMat", "AstralTide/Sea", 2502, m => { m.SetColor("_Tint", leg.water); });
+    var maskMat = Mat("WaterMaskMat", "AstralTide/WaterMask", 2499);
     Material Lit(string name, Texture2D alb, Texture2D em, float emInt) => Mat(name, "Universal Render Pipeline/Lit", 2020, m => {
       m.SetTexture("_BaseMap", alb); m.SetTexture("_MainTex", alb); m.SetColor("_BaseColor", Color.white); m.SetFloat("_Smoothness", 0.15f); m.SetFloat("_Metallic", 0f);
       m.SetFloat("_Cull", 0f); m.doubleSidedGI = true;   // the sail and flags are single planes
@@ -226,9 +267,9 @@ public static class BuildWeb {
     var fogMat = Mat("FogBank", "AstralTide/Glow", 2999, m => { m.SetColor("_Color", new Color(leg.fog.r, leg.fog.g, leg.fog.b, 0.07f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 0.5f); });
     var wakeMat = wakeTex ? Mat("WakeTrail", "AstralTide/FX", 3000, m => { m.SetTexture("_MainTex", wakeTex); m.SetColor("_Color", new Color(1.1f, 1.05f, 1.25f, 0.9f)); m.SetFloat("_SwapUV", 1); m.SetFloat("_Billboard", 0); }) : null;
     var hullMesh = SaveMesh("ShipHull", ShipHull()); var sailMesh = SaveMesh("ShipSail", ShipSail()); var spireMesh = SaveMesh("LanternSpire", Spire());
-    var quad = SaveMesh("GlowQuad", Quad()); var seaMesh = SaveMesh("SeaQuad", SeaQuad(6000f)); var skyMesh = SaveMesh("SkySphere", SkySphere(48, 32));
+    var quad = SaveMesh("GlowQuad", Quad()); var seaMesh = SaveMesh("SeaRings", SeaRings(146, 160)); var skyMesh = SaveMesh("SkySphere", SkySphere(48, 32));
     var post = PostFX();
-    AlwaysInclude("AstralTide/Sky", "AstralTide/Stars", "AstralTide/Sea", "AstralTide/Lit", "AstralTide/Glow", "AstralTide/FX", "Skybox/Panoramic");
+    AlwaysInclude("AstralTide/Sky", "AstralTide/Stars", "AstralTide/Sea", "AstralTide/Lit", "AstralTide/Glow", "AstralTide/FX", "AstralTide/WaterMask", "Skybox/Panoramic", "Universal Render Pipeline/Lit");
     AssetDatabase.SaveAssets();
 
     var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -247,7 +288,8 @@ public static class BuildWeb {
     sunGo.transform.rotation = Quaternion.Euler(16f, 35f, 0f);
 
     // the sky: Art Dev's panorama as the skybox with the star veil (additive dome) over it; fallback: the procedural sky dome
-    var sky = pano ? Part("StarVeil", null, skyMesh, starsMat) : Part("Sky", null, skyMesh, skyMat); sky.transform.localScale = Vector3.one * 3800f;
+    var sky = Part("Sky", null, skyMesh, skyMat); sky.transform.localScale = Vector3.one * 3800f;
+    var veil = Part("StarVeil", null, skyMesh, starsMat); veil.transform.localScale = Vector3.one * 3800f;   // Voyage turns on one or the other per leg
     var sea = Part("Sea", null, seaMesh, seaMat);
 
     // the ship and its reflection (mirrored about the water plane)
@@ -277,6 +319,19 @@ public static class BuildWeb {
     var lantern = Part("LanternGlow", model, quad, lanternMat); lantern.transform.localPosition = lanternPos; lantern.transform.localScale = Vector3.one * (skiff ? 1.4f : 3.2f);
     var bl = new GameObject("LanternLight").AddComponent<Light>(); bl.transform.SetParent(model, false); bl.transform.localPosition = lanternPos;
     bl.type = LightType.Point; bl.color = new Color(1f, 0.8f, 0.5f); bl.range = 7f; bl.intensity = 2.5f; bl.shadows = LightShadows.None;
+    // Mike's M1 note: water showed through the hull. A depth-only lid at the waterline inside the hull stops the sea drawing there.
+    var lidMesh = HullLid(model, 0.12f);
+    if (lidMesh){ lidMesh = SaveMesh("HullLid", lidMesh); var lid = Part("WaterMask", model, lidMesh, maskMat); }
+    // the Cosmic Sea's twin glowing cyan wake lines (switched on for that leg only)
+    var cyanMat = Mat("CosmicWakeLine", "AstralTide/FX", 3000, m => { m.SetTexture("_MainTex", Texture2D.whiteTexture); m.SetColor("_Color", new Color(0.5f, 2.6f, 3.0f, 1f)); m.SetFloat("_SwapUV", 0); m.SetFloat("_Billboard", 0); });
+    var cosmic = new TrailRenderer[2];
+    for (int i = 0; i < 2; i++){
+      var g = new GameObject(i == 0 ? "CosmicWakePort" : "CosmicWakeStarboard"); g.transform.SetParent(model, false); g.transform.localPosition = new Vector3((i == 0 ? -0.95f : 0.95f), 0.12f, -2.6f);
+      var tr = g.AddComponent<TrailRenderer>(); tr.sharedMaterial = cyanMat; tr.time = 4.5f; tr.minVertexDistance = 0.5f; tr.alignment = LineAlignment.View; tr.widthMultiplier = 0.18f;
+      tr.widthCurve = AnimationCurve.Linear(0f, 1f, 1f, 0.4f); var gr = new Gradient(); gr.SetKeys(new[]{ new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) }, new[]{ new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.6f, 0.5f), new GradientAlphaKey(0f, 1f) });
+      tr.colorGradient = gr; tr.shadowCastingMode = ShadowCastingMode.Off; tr.receiveShadows = false; tr.numCapVertices = 2; g.SetActive(false); cosmic[i] = tr;
+    }
+    boat.cosmicWake = cosmic;
     TrailRenderer wake = null;
     if (wakeMat){
       var wg = new GameObject("Wake"); wg.transform.SetParent(shipGo.transform, false); wg.transform.localPosition = new Vector3(0, 0.05f, -2.4f * SkiffScale); wg.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
@@ -301,9 +356,76 @@ public static class BuildWeb {
     var sl = new GameObject("LanternLight").AddComponent<Light>(); sl.transform.SetParent(spire, false); sl.transform.localPosition = new Vector3(0, lanternY, 0);
     sl.type = LightType.Point; sl.color = new Color(1f, 0.82f, 0.52f); sl.range = 90f; sl.intensity = 4f; sl.shadows = LightShadows.None;
 
+    // ---- M2: the other four landmarks (Art Dev's, by name; fallback: a glowing procedural tower) ----
+    var lmRoot = new Transform[5]; var lmMir = new Transform[5]; var lmHalo = new Transform[5]; var lmLight = new Light[5]; var lmTop = new float[5]; var lmMat = new Material[5]; var lmEm = new float[5];
+    var lmAnim = new Transform[5]; var lmAnimMir = new Transform[5]; Transform clapper = null, clapperMir = null;
+    lmRoot[0] = spire; lmMir[0] = spireMir; lmHalo[0] = halo; lmLight[0] = sl; lmTop[0] = lanternY; lmMat[0] = spireMat; lmEm[0] = 4f;
+    var lmDefs = new[]{ (key: "AT_AuroraGate", anchor: "Anchor_GateCenter", scale: 1.5f, em: 4f, halo: 46f), (key: "AT_FallenStar", anchor: "Anchor_StarCore", scale: 2f, em: 4.5f, halo: 34f),
+                        (key: "AT_GlacierBell", anchor: "Anchor_BellGlow", scale: 1.6f, em: 4f, halo: 30f), (key: "AT_WhiteStar", anchor: "Anchor_StarCenter", scale: 1.6f, em: 9f, halo: 80f) };
+    Transform Pivot(Transform parent, Vector3 worldPos, string n){ var pv = new GameObject(n).transform; pv.SetParent(parent, false); pv.position = worldPos; pv.rotation = parent.rotation; return pv; }
+    for (int k = 1; k < 5; k++){
+      var d = lmDefs[k - 1]; var L = Leg.All[k];
+      var fbx = Find<GameObject>("Assets/Art", d.key); var alb = Find<Texture2D>("Assets/Art", d.key + "_Albedo"); var em = Find<Texture2D>("Assets/Art", d.key + "_Emission");
+      var root = new GameObject(L.landmarkName.Replace(" ", "")).transform; var mir = new GameObject(L.landmarkName.Replace(" ", "") + "Mirror").transform; mir.localScale = new Vector3(1, -1, 1);
+      Vector3 anchor = new Vector3(0, 24f, 0);
+      if (fbx){
+        var lit = Lit(d.key + "Lit", alb, em, d.em); var mirM = Mirror(d.key + "Mirror", alb, em, 2005, d.em * 0.5f); lmMat[k] = lit; lmEm[k] = d.em;
+        foreach (var (r0, mat) in new[]{ (root, lit), (mir, mirM) }){
+          var hold = new GameObject("Model").transform; hold.SetParent(r0, false); hold.localScale = Vector3.one * d.scale;
+          var inst = (GameObject)Object.Instantiate(fbx, hold, false); inst.name = d.key;
+          foreach (var r in inst.GetComponentsInChildren<Renderer>()){ var ms = r.sharedMaterials; for (int i = 0; i < ms.Length; i++) ms[i] = mat; r.sharedMaterials = ms; r.shadowCastingMode = ShadowCastingMode.Off; r.receiveShadows = false; }
+          var an = inst.GetComponentsInChildren<Transform>().FirstOrDefault(t => t.name == d.anchor);
+          if (an && r0 == root) anchor = root.InverseTransformPoint(an.position); else if (!an) Debug.LogWarning($"[Setup] {d.key}: no {d.anchor}");
+          bool isMir = r0 == mir;
+          if (L.landmark == Landmark.GlacierBell){   // pivots at the top of the bell so it (and the clapper, lagging) can swing on arrival
+            var parts = inst.GetComponentsInChildren<Transform>().Where(t => t.name == "Bell" || t.name == "BellInner").ToArray(); var clap = inst.GetComponentsInChildren<Transform>().FirstOrDefault(t => t.name == "Clapper");
+            var bellR = parts.Select(t => t.GetComponent<Renderer>()).FirstOrDefault(x => x);
+            if (bellR){
+              var bb = bellR.bounds; var top = new Vector3(bb.center.x, isMir ? bb.min.y : bb.max.y, bb.center.z);
+              var pv = Pivot(r0, top, "BellPivot"); foreach (var t in parts) t.SetParent(pv, true);
+              Transform cp = null; if (clap){ cp = Pivot(r0, top, "ClapperPivot"); clap.SetParent(cp, true); }
+              if (isMir){ lmAnimMir[k] = pv; clapperMir = cp; } else { lmAnim[k] = pv; clapper = cp; }
+            } else Debug.LogWarning("[Setup] GlacierBell: no Bell child (no swing)");
+          }
+          if (L.landmark == Landmark.WhiteStar && an){   // a pivot at the star's centre for the arrival flare
+            var pv = Pivot(r0, an.position, "StarPivot"); hold.SetParent(pv, true);
+            if (isMir) lmAnimMir[k] = pv; else lmAnim[k] = pv;
+          }
+        }
+      } else {
+        var fm = Mat($"Landmark{k}Fallback", "AstralTide/Lit", 2020, m => { m.SetColor("_Glow", L.glow); m.SetFloat("_GlowBoost", 1.2f); m.SetFloat("_Mirror", 0); m.SetFloat("_ZTest", 4); m.SetFloat("_ZWrite", 1); m.SetFloat("_VColor", 1); });
+        var fmm = Mat($"Landmark{k}FallbackMirror", "AstralTide/Lit", 2005, m => { m.SetColor("_Glow", L.glow); m.SetFloat("_GlowBoost", 1f); m.SetFloat("_Mirror", 1); m.SetFloat("_ZTest", 4); m.SetFloat("_ZWrite", 1); m.SetFloat("_VColor", 1); });
+        Part("Tower", root, spireMesh, fm); Part("TowerMirror", mir, spireMesh, fmm); lmMat[k] = fm; anchor = new Vector3(0, 52f, 0);
+      }
+      var h = Part("Halo", root, quad, haloMat).transform; h.localPosition = anchor; h.localScale = Vector3.one * d.halo;
+      var li = new GameObject("Light").AddComponent<Light>(); li.transform.SetParent(root, false); li.transform.localPosition = anchor;
+      li.type = LightType.Point; li.color = L.glow; li.range = 110f; li.intensity = 4f; li.shadows = LightShadows.None;
+      lmRoot[k] = root; lmMir[k] = mir; lmHalo[k] = h; lmLight[k] = li; lmTop[k] = anchor.y;
+      root.gameObject.SetActive(false); mir.gameObject.SetActive(false);
+    }
+    // ---- M2 props on the shared atlas (fallback: runtime procedural meshes) ----
+    var propAlb = Find<Texture2D>("Assets/Art", "AT_Props_Albedo"); var propEm = Find<Texture2D>("Assets/Art", "AT_Props_Emission");
+    var propMat = Lit("PropsLit", propAlb, propEm, 4f); var propMirMat = Mirror("PropsMirror", propAlb, propEm, 2006, 2f);
+    Material VC(string n, Color glow, bool mirror) => Mat(n, "AstralTide/Lit", mirror ? 2006 : 2020, m => { m.SetColor("_Glow", glow); m.SetFloat("_GlowBoost", 1.6f); m.SetFloat("_Mirror", mirror ? 1 : 0); m.SetFloat("_ZTest", 4); m.SetFloat("_ZWrite", 1); m.SetFloat("_VColor", 1); });
+    var nodeTex = Find<Texture2D>("Assets/Art", "AT_ConstellationNode"); var lineTex = Find<Texture2D>("Assets/Art", "AT_ConstellationLine"); var currentTex = Find<Texture2D>("Assets/Art", "AT_Current");
+    var fragMat = starTex ? Mat("FragmentGlint", "AstralTide/FX", 3000, m => { m.SetTexture("_MainTex", starTex); m.SetColor("_Color", new Color(2.2f, 2.1f, 1.6f, 1f)); m.SetFloat("_Billboard", 1); m.SetFloat("_SwapUV", 0); })
+      : Mat("FragmentGlow", "AstralTide/Glow", 3000, m => { m.SetColor("_Color", new Color(1f, 0.95f, 0.75f, 0.9f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 4); });
+    var constMat = nodeTex ? Mat("ConstellationNode", "AstralTide/FX", 3003, m => { m.SetTexture("_MainTex", nodeTex); m.SetColor("_Color", new Color(2.4f, 2.4f, 2.6f, 1f)); m.SetFloat("_Billboard", 1); m.SetFloat("_SwapUV", 0); })
+      : Mat("ConstellationGlow", "AstralTide/Glow", 3003, m => { m.SetColor("_Color", new Color(0.9f, 0.95f, 1f, 1f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 5); });
+    var lineMat = Mat("ConstellationLine", "AstralTide/FX", 3002, m => { m.SetTexture("_MainTex", lineTex ? lineTex : Texture2D.whiteTexture); m.SetColor("_Color", lineTex ? new Color(1.4f, 1.5f, 1.8f, 0.8f) : new Color(0.6f, 0.7f, 1f, 0.25f)); m.SetFloat("_Billboard", 0); m.SetFloat("_SwapUV", 0); });
+    var buoyMat = starTex ? Mat("BuoyGlint", "AstralTide/FX", 3000, m => { m.SetTexture("_MainTex", starTex); m.SetColor("_Color", new Color(0.9f, 2.6f, 2.8f, 1f)); m.SetFloat("_Billboard", 1); m.SetFloat("_SwapUV", 0); })
+      : Mat("BuoyGlow", "AstralTide/Glow", 3000, m => { m.SetColor("_Color", new Color(0.5f, 1f, 1f, 0.9f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 4); });
+
     var v = new GameObject("Voyage").AddComponent<Voyage>();
-    v.cam = cam; v.sea = sea.transform; v.sky = sky.transform; v.boat = boat; v.spire = spire; v.spireHalo = halo; v.spireMirror = spireMir; v.spireLight = sl; v.boatLight = bl; v.lanternY = lanternY;
-    v.lanternGlow = lantern.GetComponent<Renderer>(); v.quadMesh = quad; v.glowMat = glowMat; v.gustMat = gustMat; v.haloMat = haloMat; v.fogMat = fogMat; v.seaMat = seaMat; v.spireMat = spireMat;
+    v.landmarks = lmRoot; v.landmarkMirrors = lmMir; v.halos = lmHalo; v.landmarkLights = lmLight; v.landmarkTop = lmTop; v.landmarkMats = lmMat; v.landmarkEm = lmEm;
+    v.landmarkAnim = lmAnim; v.landmarkAnimMir = lmAnimMir; v.clapper = clapper; v.clapperMir = clapperMir;
+    v.panos = panos; v.currentTex = currentTex; v.fragIcon = nodeTex; v.starVeil = veil.transform;
+    v.meteorArt = Find<GameObject>("Assets/Art", "AT_MeteorRock"); v.floeArt = Find<GameObject>("Assets/Art", "AT_IceFloe"); v.fragArt = Find<GameObject>("Assets/Art", "AT_StarFragment"); v.buoyArt = Find<GameObject>("Assets/Art", "AT_StarBuoy");
+    v.propMat = propMat; v.propMirMat = propMirMat; v.fragMat = fragMat; v.constMat = constMat; v.lineMat = lineMat; v.buoyMat = buoyMat;
+    v.rockMat = VC("MeteorProc", new Color(1f, 0.5f, 0.2f), false); v.rockMirMat = VC("MeteorProcMirror", new Color(1f, 0.5f, 0.2f), true);
+    v.iceMat = VC("IceProc", new Color(0.8f, 0.95f, 1f), false); v.iceMirMat = VC("IceProcMirror", new Color(0.8f, 0.95f, 1f), true);
+    v.cam = cam; v.sea = sea.transform; v.sky = sky.transform; v.boat = boat; v.boatLight = bl;
+    v.quadMesh = quad; v.glowMat = glowMat; v.gustMat = gustMat; v.haloMat = haloMat; v.fogMat = fogMat; v.seaMat = seaMat;
     v.skyboxMat = panoMat; v.skyPano = pano; v.starfield = starfield; v.realModels = skiff && spireFbx;
     v.compassStrip = Find<Texture2D>("Assets/Art", "AT_StarCompass_Strip"); v.compassMarker = Find<Texture2D>("Assets/Art", "AT_StarCompass_GoalMarker");
 
@@ -311,6 +433,9 @@ public static class BuildWeb {
     au.music = Find<AudioClip>("Assets/Audio", "dusk_shallows_loop"); au.arrival = Find<AudioClip>("Assets/Audio", "landmark_arrival_swell");
     au.lapping = Find<AudioClip>("Assets/Audio", "water_lapping_loop"); au.wakeHiss = Find<AudioClip>("Assets/Audio", "wake_hiss_loop");
     au.sailFill = Find<AudioClip>("Assets/Audio", "sail_filling"); au.gust = Find<AudioClip>("Assets/Audio", "star_gust_whoosh"); au.chime = Find<AudioClip>("Assets/Audio", "on_course_chime");
+    au.legMusic = Leg.All.Select(l => Find<AudioClip>("Assets/Audio", l.musicKey)).ToArray();
+    au.currentRush = Find<AudioClip>("Assets/Audio", "current_rush_loop"); au.meteorBump = Find<AudioClip>("Assets/Audio", "meteor_bump"); au.iceCreak = Find<AudioClip>("Assets/Audio", "ice_creak");
+    au.fragChime = Find<AudioClip>("Assets/Audio", "star_fragment_chime"); au.constellation = Find<AudioClip>("Assets/Audio", "constellation_complete"); au.boost = Find<AudioClip>("Assets/Audio", "boost_whoosh"); au.glacierBell = Find<AudioClip>("Assets/Audio", "glacier_bell");
 
     EditorSceneManager.SaveScene(scene, ScenePath);
     EditorBuildSettings.scenes = new[]{ new EditorBuildSettingsScene(ScenePath, true) };

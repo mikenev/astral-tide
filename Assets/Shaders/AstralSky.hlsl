@@ -6,6 +6,7 @@
 #define ASTRAL_SKY_INCLUDED
 float4 _AT_SkyTop, _AT_SkyMid, _AT_SkyLow, _AT_Horizon, _AT_GlowCol, _AT_GoalDir;   // _AT_GoalDir.xyz = unit dir to the lantern, w = glow strength
 float _AT_StarAmount, _AT_PanoMix, _AT_PanoGain, _AT_StarfieldMix, _AT_Flash;
+float _AT_Aurora, _AT_Shoot, _AT_Nebula; float4 _AT_AuroraCol, _AT_AuroraCol2, _AT_NebulaCol, _AT_NebulaCol2;   // M2 per-leg sky features
 TEXTURE2D(_AT_Pano); SAMPLER(sampler_AT_Pano); TEXTURE2D(_AT_Starfield); SAMPLER(sampler_AT_Starfield);
 
 float at_hash3(float3 p){ p = frac(p * 0.3183099 + 0.1); p *= 17.0; return frac(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -46,6 +47,41 @@ half3 AstralSkyBase(float3 d, float t){
   float streak = at_fbm(float2(az * 2.2 + t * 0.002, ae * 26.0));
   float band = smoothstep(0.02, 0.09, ae) * smoothstep(0.32, 0.12, ae);
   c = lerp(c, c * 1.18 + _AT_GlowCol.rgb * 0.08, saturate((streak - 0.52) * 3.0) * band * 0.7);
+  // Aurora Reach: two curtains of light with vertical rays, drifting slowly
+  if (_AT_Aurora > 0.001){
+    for (int k = 0; k < 2; k++){
+      float yb = 0.1 + 0.08 * k + 0.09 * at_noise(float2(az * 1.3 + k * 5.0 + t * 0.02, k));
+      float x = ae - yb;
+      float curtain = step(0.0, x) * exp(-x * (5.0 + k * 2.0)) * smoothstep(-0.02, 0.02, x);
+      float rays = 0.45 + 0.55 * sin(az * (22.0 + k * 9.0) + at_fbm(float2(az * 3.0, t * 0.05 + k)) * 6.0 + t * (0.25 + k * 0.1));
+      float sway = 0.5 + 0.5 * sin(az * 2.0 + t * 0.07 + k * 2.0);
+      c += lerp(_AT_AuroraCol.rgb, _AT_AuroraCol2.rgb, saturate(x * 3.0)) * curtain * rays * sway * _AT_Aurora;
+    }
+  }
+  // The Cosmic Sea: a purple nebula with brighter folds
+  if (_AT_Nebula > 0.001){
+    float n = at_fbm(float2(az * 1.4 + t * 0.002, ae * 3.2)), n2 = at_fbm(float2(az * 2.3 - 3.0, ae * 5.0 + 2.0));
+    float m = smoothstep(0.38, 0.85, n) * smoothstep(0.0, 0.25, ae);
+    c += lerp(_AT_NebulaCol.rgb, _AT_NebulaCol2.rgb, n2) * m * _AT_Nebula + _AT_NebulaCol2.rgb * pow(m, 4.0) * 0.6 * _AT_Nebula;
+  }
+  return c;
+}
+// Ember Drift: shooting stars. Each slot picks a start point and direction from a hash of its time window and streaks for a moment.
+half3 AstralShooting(float3 d, float t){
+  if (_AT_Shoot <= 0.001) return 0;
+  float az = atan2(d.x, d.z), el = asin(saturate(abs(d.y))); half3 c = 0;
+  for (int i = 0; i < 4; i++){
+    float span = 2.6 + i * 0.7; float slot = floor(t / span + i * 0.31); float ph = frac(t / span + i * 0.31);
+    float h1 = at_hash3(float3(slot, i, 1.7)), h2 = at_hash3(float3(slot, i, 5.3)), h3 = at_hash3(float3(slot, i, 9.1));
+    if (h3 > _AT_Shoot) continue;
+    float life = 0.35; if (ph > life) continue; float k = ph / life;
+    float2 p0 = float2(h1 * 6.2831853 - 3.14159265, 0.35 + 0.6 * h2); float ang = -0.5 - h3 * 0.8; float2 dir = float2(cos(ang) * (h1 > 0.5 ? 1 : -1), sin(ang));
+    float2 head = p0 + dir * k * 0.5, tail = head - dir * 0.16;
+    float2 q = float2(az, el); float2 dq = q - tail; dq.x = (abs(dq.x) > 3.14159265) ? dq.x - sign(dq.x) * 6.2831853 : dq.x;
+    float2 hd = head - tail; float u = saturate(dot(dq, hd) / dot(hd, hd)); float2 e = dq - hd * u; e.x *= cos(el);
+    float line_ = exp(-dot(e, e) / 0.0000025) * u * (1.0 - k * 0.6);
+    c += half3(1.0, 0.86, 0.7) * line_ * 2.0;
+  }
   return c;
 }
 half3 AstralStarsAndGlow(float3 d, float t){
@@ -67,5 +103,5 @@ half3 AstralStarsAndGlow(float3 d, float t){
   c += _AT_GlowCol.rgb * _AT_Flash * 0.35;
   return c;
 }
-half3 AstralSky(float3 d, float t){ d = normalize(d); return AstralSkyBase(d, t) + AstralStarsAndGlow(d, t); }
+half3 AstralSky(float3 d, float t){ d = normalize(d); return AstralSkyBase(d, t) + AstralStarsAndGlow(d, t) + AstralShooting(d, t); }
 #endif
