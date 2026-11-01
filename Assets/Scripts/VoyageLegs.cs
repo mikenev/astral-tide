@@ -99,11 +99,12 @@ namespace AstralTide {
       if (currentTex) Shader.SetGlobalTexture("_AT_CurrentTex", currentTex); Shader.SetGlobalFloat("_AT_CurrentTexOn", currentTex ? 1f : 0f);
       VoyageAudio.I?.SetCurrent(0f);
       // twin cyan wake lines on the Cosmic Sea
-      if (boat.cosmicWake != null) foreach (var t in boat.cosmicWake) if (t){ t.gameObject.SetActive(leg.landmark == Landmark.WhiteStar); t.Clear(); }
-      MakeFogBanks(); MakeGusts(); MakeFragments(); MakeConstellation(); MakeObstacles(); MakeBuoys();
+      if (boat.cosmicWake != null) foreach (var t in boat.cosmicWake) if (t){ t.gameObject.SetActive(leg.cosmicWake); t.Clear(); }
+      boat.maxSpeed = 11f * leg.speedMul; boat.turnRate = 34f * (leg.speedMul > 1f ? 1.25f : 1f);
+      MakeFogBanks(); MakeGusts(); MakeFragments(); MakeConstellation(); MakeObstacles(); MakeBuoys(); MakeWhale();
       VoyageAudio.I?.SetLeg(legIx);
       ApplySky(0f); Place();
-      Debug.Log($"[AT] leg {legIx + 1} loaded: {leg.name} -> {leg.landmarkName} waves={leg.waveAmp:F2} currents={nc} obstacles={obsT.Length} buoys={buoyT.Length} frags={FragCount}/5 sky={(pano ? "pano" : "dome")}");
+      Debug.Log($"[AT] leg {legIx + 1} loaded: {leg.name} -> {leg.landmarkName} waves={leg.waveAmp:F2} currents={nc} obstacles={obsT.Length} buoys={buoyT.Length} frags={FragCount}/{leg.fragments.Length} speed x{leg.speedMul:F0} sky={(pano ? "pano" : "dome")}");
     }
     void MakeFogBanks(){   // soft fog billboards along both edges of the course and behind the start
       var root = new GameObject("FogBanks").transform; root.SetParent(legRoot, false); var d = leg.Dir; var rt = Right;
@@ -120,11 +121,13 @@ namespace AstralTide {
     void MakeFragments(){
       int n = leg.fragments.Length, mask = Progress.Frags(legIx); fragT = new Transform[n];
       for (int i = 0; i < n; i++){
+        bool warm = leg.landmark == Landmark.GlacierBell && fragWarmMat;   // M3 (Mike): on the white ice, warm gold with a glow halo
         if (fragArt){   // Art Dev's star crystal, spun and bobbed, with an AT_Star glint
           fragT[i] = new GameObject("Fragment" + i).transform; fragT[i].SetParent(legRoot, false);
-          var m = Prop(fragArt, propMat, fragT[i]); m.localScale = Vector3.one * 2.2f; m.name = "Crystal";
-          Billboard("Glint", Vector3.zero, 4.5f, fragMat, fragT[i]).transform.localPosition = Vector3.zero;
-        } else fragT[i] = Billboard("Fragment" + i, leg.fragments[i] + Vector3.up * 2.6f, 4.2f, fragMat, legRoot).transform;
+          var m = Prop(fragArt, warm && propWarmMat ? propWarmMat : propMat, fragT[i]); m.localScale = Vector3.one * (warm ? 2.8f : 2.2f); m.name = "Crystal";
+          Billboard("Glint", Vector3.zero, warm ? 6f : 4.5f, warm ? fragWarmMat : fragMat, fragT[i]).transform.localPosition = Vector3.zero;
+        } else fragT[i] = Billboard("Fragment" + i, leg.fragments[i] + Vector3.up * 2.6f, 4.2f, warm ? fragWarmMat : fragMat, legRoot).transform;
+        if (warm && fragHaloMat){ var h = Billboard("Halo", Vector3.zero, 11f, fragHaloMat, fragT[i]).transform; h.localPosition = Vector3.zero; h.localScale = Vector3.one * (fragArt ? 11f : 11f / 4.2f); }
         if ((mask & (1 << i)) != 0) fragT[i].gameObject.SetActive(false);
       }
     }
@@ -166,17 +169,29 @@ namespace AstralTide {
       for (int y = 0; y < lat; y++) for (int x = 0; x < lon; x++){ int i = y * (lon + 1) + x; t.AddRange(new[]{ i, i + lon + 1, i + 1, i + 1, i + lon + 1, i + lon + 2 }); }
       var m = new Mesh{ name = "Meteor" }; m.SetVertices(v); m.SetColors(c); m.SetTriangles(t, 0); m.RecalculateNormals(); m.RecalculateBounds(); return m;
     }
+    /// <summary>A flat, angular ice floe: an irregular 7-11 sided slab with sharp corners, a faceted top just above the water
+    /// (each facet a slightly different white-blue, tilted a touch), a bright bevelled rim and straight icy sides. Planar UVs so
+    /// a textured material (AT_IceFloe_Mat) also works.</summary>
     static Mesh FloeMesh(System.Random rng, float r){
-      int n = 9; var top = new Vector3[n]; for (int i = 0; i < n; i++){ float a = i * Mathf.PI * 2f / n + (float)rng.NextDouble() * 0.3f, rr = r * (0.72f + (float)rng.NextDouble() * 0.38f); top[i] = new Vector3(Mathf.Cos(a) * rr, 0.35f, Mathf.Sin(a) * rr); }
-      var v = new List<Vector3>(); var c = new List<Color>(); var t = new List<int>();
-      void Tri(Vector3 a, Vector3 b, Vector3 d, Color col){ int i = v.Count; v.Add(a); v.Add(b); v.Add(d); c.Add(col); c.Add(col); c.Add(col); t.Add(i); t.Add(i + 1); t.Add(i + 2); }
-      var snow = new Color(0.9f, 0.95f, 1f); var side = new Color(0.55f, 0.75f, 0.92f); var under = new Color(0.35f, 0.55f, 0.8f);
-      var ctr = new Vector3(0, 0.42f, 0);
+      int n = 7 + rng.Next(5); var rim = new Vector3[n]; var lip = new Vector3[n];
       for (int i = 0; i < n; i++){
-        var a = top[i]; var b = top[(i + 1) % n]; var a2 = new Vector3(a.x * 0.9f, -0.6f, a.z * 0.9f); var b2 = new Vector3(b.x * 0.9f, -0.6f, b.z * 0.9f);
-        Tri(ctr, b, a, Color.Lerp(snow, Color.white, (i % 3) * 0.1f)); Tri(a, b, b2, side); Tri(a, b2, a2, under);
+        float a = (i + (float)rng.NextDouble() * 0.6f) * Mathf.PI * 2f / n, rr = r * (0.6f + (float)rng.NextDouble() * 0.5f);
+        rim[i] = new Vector3(Mathf.Cos(a) * rr, 0.22f + (float)rng.NextDouble() * 0.06f, Mathf.Sin(a) * rr * 0.8f);
+        lip[i] = new Vector3(rim[i].x * 1.05f, 0.08f, rim[i].z * 1.05f);
       }
-      var m = new Mesh{ name = "IceFloe" }; m.SetVertices(v); m.SetColors(c); m.SetTriangles(t, 0); m.RecalculateNormals(); m.RecalculateBounds(); return m;
+      var v = new List<Vector3>(); var c = new List<Color>(); var t = new List<int>(); var uv = new List<Vector2>();
+      void Tri(Vector3 a, Vector3 b, Vector3 d, Color col){ int k = v.Count; v.Add(a); v.Add(b); v.Add(d); c.Add(col); c.Add(col); c.Add(col); uv.Add(new Vector2(a.x, a.z) / 8f); uv.Add(new Vector2(b.x, b.z) / 8f); uv.Add(new Vector2(d.x, d.z) / 8f); t.Add(k); t.Add(k + 1); t.Add(k + 2); }
+      var ctr = new Vector3(((float)rng.NextDouble() - 0.5f) * r * 0.3f, 0.3f, ((float)rng.NextDouble() - 0.5f) * r * 0.3f);
+      for (int i = 0; i < n; i++){
+        int j = (i + 1) % n; float f = (float)rng.NextDouble();
+        var top = Color.Lerp(new Color(0.86f, 0.93f, 1f), new Color(0.97f, 0.99f, 1f), f);
+        Tri(ctr, rim[j], rim[i], top);                                                      // faceted top
+        Tri(rim[i], rim[j], lip[j], new Color(1f, 1f, 1f)); Tri(rim[i], lip[j], lip[i], new Color(1f, 1f, 1f));   // bright bevel
+        var lo1 = new Vector3(lip[i].x * 0.97f, -0.45f, lip[i].z * 0.97f); var lo2 = new Vector3(lip[j].x * 0.97f, -0.45f, lip[j].z * 0.97f);
+        var side = Color.Lerp(new Color(0.45f, 0.72f, 0.9f), new Color(0.6f, 0.85f, 0.97f), f);
+        Tri(lip[i], lip[j], lo2, side); Tri(lip[i], lo2, lo1, side);                          // straight icy sides
+      }
+      var m = new Mesh{ name = "IceFloe" }; m.SetVertices(v); m.SetColors(c); m.SetUVs(0, uv); m.SetTriangles(t, 0); m.RecalculateNormals(); m.RecalculateBounds(); return m;
     }
     void MakeObstacles(){
       int n = leg.meteors + leg.floes; bool ice = leg.floes > 0; var rng = new System.Random(1009 + legIx * 77);
@@ -194,7 +209,11 @@ namespace AstralTide {
       n = pos.Count; obsT = new Transform[n]; obsMir = new Transform[n]; obsPos = pos.ToArray(); obsBase = pos.ToArray(); obsR = rad.ToArray(); obsPh = new float[n]; obsCool = new float[n];
       for (int i = 0; i < n; i++){
         var art = ice ? floeArt : meteorArt;
-        if (art){   // Art Dev's rock / floe (shared props atlas), scaled to the obstacle's radius
+        if (ice){   // M3: flat, faceted ice (Art Dev's AT_IceFloe_Mat when it lands, else the icy vertex-colour material)
+          var mesh = FloeMesh(rng, obsR[i]); bool am = floeArtMat;
+          obsT[i] = MeshObj("Floe" + i, mesh, am ? floeArtMat : iceMat, legRoot).transform;
+          obsMir[i] = MeshObj("Mirror", mesh, iceMirMat, legRoot).transform; obsMir[i].localScale = new Vector3(1, -1, 1);
+        } else if (art){   // Art Dev's rock / floe (shared props atlas), scaled to the obstacle's radius
           float sc = obsR[i] / (ice ? 3.2f : 1.6f);
           obsT[i] = new GameObject(ice ? "Floe" + i : "Meteor" + i).transform; obsT[i].SetParent(legRoot, false); Prop(art, propMat, obsT[i]).localScale = Vector3.one * sc;
           obsMir[i] = new GameObject("Mirror").transform; obsMir[i].SetParent(legRoot, false); obsMir[i].localScale = new Vector3(1, -1, 1); Prop(art, propMirMat, obsMir[i]).localScale = Vector3.one * sc;
@@ -311,12 +330,64 @@ namespace AstralTide {
           Emit(warpPS, p, -cf * Random.Range(70f, 110f), Random.Range(0.12f, 0.25f), 0.45f, Color.Lerp(leg.glow, new Color(0.6f, 1f, 1f), Random.value));
         }
       }
+      WhaleTick();
       // landmark idle motion
       var anim = landmarkAnim[legIx];
       if (anim && state <= State.Sail){
         if (leg.landmark == Landmark.FallenStar) anim.localRotation = Quaternion.Euler(0, Time.time * 12f, 0);
         if (leg.landmark == Landmark.WhiteStar){ anim.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 1.3f) * 0.04f); if (landmarkAnimMir[legIx]) landmarkAnimMir[legIx].localScale = anim.localScale; }
         if (leg.landmark == Landmark.GlacierBell){ anim.localRotation = Quaternion.identity; if (clapper) clapper.localRotation = Quaternion.identity; }
+      }
+    }
+    // ---------- Frost Mirror's whales: 3 x Art Dev's AT_FrostWhale (scenery only, no colliders), side-on 30-60 m out,
+    // staggered 4 s Breach clips, our own spout at Anchor_Spout and a splash at the ~2.9 s landing ~8 m ahead of the root ----------
+    Transform[] whales = new Transform[0], whaleMirs = new Transform[0]; Animator[] whaleAn = new Animator[0], whaleMirAn = new Animator[0];
+    Transform[] whaleSpout = new Transform[0]; int[] whaleCyc = new int[0]; bool[] whaleSplashed = new bool[0], whaleBlown = new bool[0]; int whaleSurf;
+    const float WhaleCycle = 12f, WhaleClip = 4f;
+    void MakeWhale(){
+      whales = whaleMirs = whaleSpout = new Transform[0]; whaleAn = whaleMirAn = new Animator[0]; whaleSurf = 0;
+      if (leg.landmark != Landmark.GlacierBell) return;
+      if (!whaleArt){ Debug.Log("[AT] whales: AT_FrostWhale not in the build (skipped)"); return; }
+      int n = 3; whales = new Transform[n]; whaleMirs = new Transform[n]; whaleAn = new Animator[n]; whaleMirAn = new Animator[n]; whaleSpout = new Transform[n];
+      whaleCyc = new int[n]; whaleSplashed = new bool[n]; whaleBlown = new bool[n];
+      for (int i = 0; i < n; i++){
+        Transform Make(string nm, Material m, out Animator an){
+          var t = Prop(whaleArt, m, legRoot); t.name = nm;
+          foreach (var c in t.GetComponentsInChildren<Collider>()) Destroy(c);
+          an = t.GetComponent<Animator>() ?? t.gameObject.AddComponent<Animator>(); an.runtimeAnimatorController = whaleCtrl; an.applyRootMotion = false; an.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+          t.gameObject.SetActive(false); return t;
+        }
+        whales[i] = Make("Whale" + i, whaleMat, out whaleAn[i]); whaleMirs[i] = Make("WhaleMirror" + i, whaleMirMat ? whaleMirMat : whaleMat, out whaleMirAn[i]);
+        foreach (var t in whales[i].GetComponentsInChildren<Transform>()) if (t.name == "Anchor_Spout") whaleSpout[i] = t;
+        whaleCyc[i] = -1;
+      }
+      Debug.Log($"[AT] whales: {n} x AT_FrostWhale breaching (anim={(whaleCtrl ? 1 : 0)} spout={(whaleSpout[0] ? 1 : 0)})");
+    }
+    void WhaleTick(){
+      for (int i = 0; i < whales.Length; i++){
+        float e = legTime + 3f - i * 4f; if (e < 0f){ continue; }
+        int cyc = Mathf.FloorToInt(e / WhaleCycle); float p = e - cyc * WhaleCycle;
+        if (cyc != whaleCyc[i]){   // a new breach near the ship: side-on, ahead and off to one side
+          whaleCyc[i] = cyc; whaleSplashed[i] = whaleBlown[i] = false;
+          float side = ((i + cyc) % 2 == 0) ? 1f : -1f, sc = 0.9f + 0.25f * i;
+          var pos = boat.Pos + leg.Dir * (40f + 10f * i) + Right * side * (30f + 12f * i); pos.y = 0f;
+          var rot = Quaternion.LookRotation(-Right * side * 0.3f + leg.Dir * (i == 1 ? -1f : 1f));
+          whales[i].SetPositionAndRotation(pos, rot); whales[i].localScale = Vector3.one * sc;
+          whaleMirs[i].SetPositionAndRotation(pos, rot); whaleMirs[i].localScale = new Vector3(sc, -sc, sc);
+          whales[i].gameObject.SetActive(true); whaleMirs[i].gameObject.SetActive(true);
+          if (whaleAn[i].runtimeAnimatorController){ whaleAn[i].Play("Breach", 0, 0f); whaleMirAn[i].Play("Breach", 0, 0f); }
+          whaleSurf++; Debug.Log($"[AT] a whale breaches ({whaleSurf})");
+        }
+        bool vis = p < WhaleClip + 0.6f; if (whales[i].gameObject.activeSelf != vis){ whales[i].gameObject.SetActive(vis); whaleMirs[i].gameObject.SetActive(vis); }
+        if (!vis) continue;
+        var w = whales[i];
+        if (whaleSpout[i] && (p < 0.9f || (p > 3.4f && p < 4.2f)) && Random.value < Time.deltaTime * 45f)   // the spout: a short pale burst ~3 m up
+          Emit(sparkPS, whaleSpout[i].position + Random.insideUnitSphere * 0.2f, Vector3.up * Random.Range(4f, 6.5f) + Random.insideUnitSphere * 0.8f, Random.Range(0.5f, 1.1f), 1.0f, new Color(0.88f, 0.96f, 1f));
+        if (!whaleSplashed[i] && p >= 2.9f){   // splash-down ~8 m ahead of the root
+          whaleSplashed[i] = true; var at = w.position + w.forward * 8f * w.localScale.x; at.y = 0.3f;
+          for (int k = 0; k < 40; k++) Emit(sparkPS, at + Random.insideUnitSphere * 2.5f, Vector3.up * Random.Range(3f, 9f) + Random.insideUnitSphere * 4f, Random.Range(0.6f, 1.5f), 1.3f, new Color(0.9f, 0.97f, 1f));
+          Debug.Log($"[AT] whale splash ({i})");
+        }
       }
     }
     static float Flat(Vector3 a, Vector3 b) => Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
@@ -340,6 +411,7 @@ namespace AstralTide {
           Debug.Log("[AT] the White Star blazes"); break;
         case Landmark.Gate: Debug.Log("[AT] the Aurora Gate opens"); break;
         case Landmark.FallenStar: Debug.Log("[AT] the Fallen Star wakes"); break;
+        case Landmark.NebulaGate: Debug.Log("[AT] the Nebula Gate opens"); break;
       }
     }
     void ArrivalAnim(float t){
@@ -380,7 +452,7 @@ namespace AstralTide {
       float s = Mathf.Sin(Time.time * 1.4f);
       var li = landmarkLights[legIx]; if (li) li.intensity = 4f + arr * 10f + s * 0.3f;
       var m = landmarkMats[legIx];
-      if (m){ if (m.HasProperty("_GlowBoost")) m.SetFloat("_GlowBoost", 1.2f + 1.5f * arr + s * 0.1f); else if (m.HasProperty("_EmissionColor")){ float b = landmarkEm[legIx] > 0f ? landmarkEm[legIx] : 4f; m.SetColor("_EmissionColor", Color.white * (b * (1f + arr) + s * 0.25f)); } }
+      if (m){ if (m.HasProperty("_GlowBoost")) m.SetFloat("_GlowBoost", 1.2f + 1.5f * arr + s * 0.1f); else if (m.HasProperty("_EmissionColor")){ float b = landmarkEm[legIx] > 0f ? landmarkEm[legIx] : 4f; var tint = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : Color.white; tint.a = 1f; m.SetColor("_EmissionColor", tint * (b * (1f + arr) + s * 0.25f)); } }
       var top = leg.goal + Vector3.up * landmarkTop[legIx]; var gd = (top - (cam ? cam.transform.position : boat.Pos)).normalized;
       float strength = 0.6f + 0.6f * Mathf.Clamp01(1f - GoalDist / leg.Length) + (arrived ? 1f : 0f) + (lined ? 0.25f : 0f);
       Shader.SetGlobalVector("_AT_GoalDir", new Vector4(gd.x, gd.y, gd.z, strength));
