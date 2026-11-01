@@ -357,19 +357,22 @@ public static class BuildWeb {
     sl.type = LightType.Point; sl.color = new Color(1f, 0.82f, 0.52f); sl.range = 90f; sl.intensity = 4f; sl.shadows = LightShadows.None;
 
     // ---- M2: the other four landmarks (Art Dev's, by name; fallback: a glowing procedural tower) ----
-    var lmRoot = new Transform[5]; var lmMir = new Transform[5]; var lmHalo = new Transform[5]; var lmLight = new Light[5]; var lmTop = new float[5]; var lmMat = new Material[5]; var lmEm = new float[5];
-    var lmAnim = new Transform[5]; var lmAnimMir = new Transform[5]; Transform clapper = null, clapperMir = null;
+    int NL = Leg.All.Length; var lmRoot = new Transform[NL]; var lmMir = new Transform[NL]; var lmHalo = new Transform[NL]; var lmLight = new Light[NL]; var lmTop = new float[NL]; var lmMat = new Material[NL]; var lmEm = new float[NL];
+    var lmAnim = new Transform[NL]; var lmAnimMir = new Transform[NL]; Transform clapper = null, clapperMir = null;
     lmRoot[0] = spire; lmMir[0] = spireMir; lmHalo[0] = halo; lmLight[0] = sl; lmTop[0] = lanternY; lmMat[0] = spireMat; lmEm[0] = 4f;
-    var lmDefs = new[]{ (key: "AT_AuroraGate", anchor: "Anchor_GateCenter", scale: 1.5f, em: 4f, halo: 46f), (key: "AT_FallenStar", anchor: "Anchor_StarCore", scale: 2f, em: 4.5f, halo: 34f),
-                        (key: "AT_GlacierBell", anchor: "Anchor_BellGlow", scale: 1.6f, em: 4f, halo: 30f), (key: "AT_WhiteStar", anchor: "Anchor_StarCenter", scale: 1.6f, em: 9f, halo: 80f) };
+    var lmDefs = new[]{ (key: "AT_AuroraGate", anchor: "Anchor_GateCenter", scale: 1.5f, em: 4f, halo: 46f, tint: Color.white, mat: "AT_AuroraGate"), (key: "AT_FallenStar", anchor: "Anchor_StarCore", scale: 2f, em: 4.5f, halo: 34f, tint: Color.white, mat: "AT_FallenStar"),
+                        (key: "AT_GlacierBell", anchor: "Anchor_BellGlow", scale: 1.6f, em: 4f, halo: 30f, tint: Color.white, mat: "AT_GlacierBell"), (key: "AT_WhiteStar", anchor: "Anchor_StarCenter", scale: 1.6f, em: 9f, halo: 80f, tint: Color.white, mat: "AT_WhiteStar"),
+                        // M3 Nebula Gate: the Aurora Gate model, bigger and recoloured magenta-violet (no new art)
+                        (key: "AT_AuroraGate", anchor: "Anchor_GateCenter", scale: 1.9f, em: 5f, halo: 60f, tint: new Color(1f, 0.62f, 1f), mat: "NebulaGate") };
     Transform Pivot(Transform parent, Vector3 worldPos, string n){ var pv = new GameObject(n).transform; pv.SetParent(parent, false); pv.position = worldPos; pv.rotation = parent.rotation; return pv; }
-    for (int k = 1; k < 5; k++){
+    for (int k = 1; k < NL; k++){
       var d = lmDefs[k - 1]; var L = Leg.All[k];
       var fbx = Find<GameObject>("Assets/Art", d.key); var alb = Find<Texture2D>("Assets/Art", d.key + "_Albedo"); var em = Find<Texture2D>("Assets/Art", d.key + "_Emission");
       var root = new GameObject(L.landmarkName.Replace(" ", "")).transform; var mir = new GameObject(L.landmarkName.Replace(" ", "") + "Mirror").transform; mir.localScale = new Vector3(1, -1, 1);
       Vector3 anchor = new Vector3(0, 24f, 0);
       if (fbx){
-        var lit = Lit(d.key + "Lit", alb, em, d.em); var mirM = Mirror(d.key + "Mirror", alb, em, 2005, d.em * 0.5f); lmMat[k] = lit; lmEm[k] = d.em;
+        var lit = Lit(d.mat + "Lit", alb, em, d.em); var mirM = Mirror(d.mat + "Mirror", alb, em, 2005, d.em * 0.5f); lmMat[k] = lit; lmEm[k] = d.em;
+        if (d.tint != Color.white){ lit.SetColor("_BaseColor", d.tint); lit.SetColor("_EmissionColor", d.tint * d.em); mirM.SetColor("_Tint", d.tint); }
         foreach (var (r0, mat) in new[]{ (root, lit), (mir, mirM) }){
           var hold = new GameObject("Model").transform; hold.SetParent(r0, false); hold.localScale = Vector3.one * d.scale;
           var inst = (GameObject)Object.Instantiate(fbx, hold, false); inst.name = d.key;
@@ -416,11 +419,23 @@ public static class BuildWeb {
     var buoyMat = starTex ? Mat("BuoyGlint", "AstralTide/FX", 3000, m => { m.SetTexture("_MainTex", starTex); m.SetColor("_Color", new Color(0.9f, 2.6f, 2.8f, 1f)); m.SetFloat("_Billboard", 1); m.SetFloat("_SwapUV", 0); })
       : Mat("BuoyGlow", "AstralTide/Glow", 3000, m => { m.SetColor("_Color", new Color(0.5f, 1f, 1f, 0.9f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 4); });
 
+    // M3: warm, glowing fragments for Frost Mirror's white ice (Mike's note), and the whale
+    var propWarmMat = Lit("PropsLitWarm", propAlb, propEm, 6f); propWarmMat.SetColor("_BaseColor", new Color(1f, 0.78f, 0.45f)); propWarmMat.SetColor("_EmissionColor", new Color(1f, 0.6f, 0.25f) * 6f);
+    var fragWarmMat = starTex ? Mat("FragmentGlintWarm", "AstralTide/FX", 3000, m => { m.SetTexture("_MainTex", starTex); m.SetColor("_Color", new Color(3.2f, 1.9f, 0.7f, 1f)); m.SetFloat("_Billboard", 1); m.SetFloat("_SwapUV", 0); })
+      : Mat("FragmentGlowWarm", "AstralTide/Glow", 3000, m => { m.SetColor("_Color", new Color(1f, 0.6f, 0.25f, 1f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 4); });
+    var fragHaloMat = Mat("FragmentHaloWarm", "AstralTide/Glow", 2999, m => { m.SetColor("_Color", new Color(1f, 0.55f, 0.2f, 0.75f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 1.6f); });
+    // Frost Mirror whales: Art Dev's AT_FrostWhale only (scenery, no colliders). If it hasn't landed, there are no whales.
+    var whaleArt = Find<GameObject>("Assets/Art", "AT_FrostWhale"); Material whaleMat = null, whaleMirMat = null;
+    if (whaleArt){ var wa = Find<Texture2D>("Assets/Art", "AT_FrostWhale_Albedo"); var we = Find<Texture2D>("Assets/Art", "AT_FrostWhale_Emission"); whaleMat = Lit("WhaleLit", wa, we, 3f); whaleMirMat = Mirror("WhaleMirror", wa, we, 2006, 1.5f); }
+    // ice floes: Art Dev's AT_IceFloe_Mat by name on our faceted floe mesh, else the procedural icy vertex-colour material
+    var floeMat = Find<Material>("Assets/Art", "AT_IceFloe_Mat");
+
     var v = new GameObject("Voyage").AddComponent<Voyage>();
+    v.propWarmMat = propWarmMat; v.fragWarmMat = fragWarmMat; v.fragHaloMat = fragHaloMat; v.whaleArt = whaleArt; v.whaleMat = whaleMat; v.whaleMirMat = whaleMirMat; v.floeArtMat = floeMat;
     v.landmarks = lmRoot; v.landmarkMirrors = lmMir; v.halos = lmHalo; v.landmarkLights = lmLight; v.landmarkTop = lmTop; v.landmarkMats = lmMat; v.landmarkEm = lmEm;
     v.landmarkAnim = lmAnim; v.landmarkAnimMir = lmAnimMir; v.clapper = clapper; v.clapperMir = clapperMir;
     v.panos = panos; v.currentTex = currentTex; v.fragIcon = nodeTex; v.starVeil = veil.transform;
-    v.meteorArt = Find<GameObject>("Assets/Art", "AT_MeteorRock"); v.floeArt = Find<GameObject>("Assets/Art", "AT_IceFloe"); v.fragArt = Find<GameObject>("Assets/Art", "AT_StarFragment"); v.buoyArt = Find<GameObject>("Assets/Art", "AT_StarBuoy");
+    v.meteorArt = Find<GameObject>("Assets/Art", "AT_MeteorRock"); v.floeArt = null; /* M3: the FBX floe scaled up read as whales; floes are our flat faceted mesh now */ v.fragArt = Find<GameObject>("Assets/Art", "AT_StarFragment"); v.buoyArt = Find<GameObject>("Assets/Art", "AT_StarBuoy");
     v.propMat = propMat; v.propMirMat = propMirMat; v.fragMat = fragMat; v.constMat = constMat; v.lineMat = lineMat; v.buoyMat = buoyMat;
     v.rockMat = VC("MeteorProc", new Color(1f, 0.5f, 0.2f), false); v.rockMirMat = VC("MeteorProcMirror", new Color(1f, 0.5f, 0.2f), true);
     v.iceMat = VC("IceProc", new Color(0.8f, 0.95f, 1f), false); v.iceMirMat = VC("IceProcMirror", new Color(0.8f, 0.95f, 1f), true);
@@ -466,6 +481,10 @@ public static class BuildWeb {
   if(!c.hasAttribute('tabindex')) c.setAttribute('tabindex','-1');
   c.addEventListener('pointerdown',function(){ try{ c.focus(); }catch(_){} });
 })();</script>";
+    // M3 (Mike): landscape only. On an upright phone or tablet a simple "rotate your device" prompt covers the game.
+    const string rot = "<style id=\"at-rotate-css\">#at-rotate{display:none;position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:#1B1638;color:#F4EEFF;font:600 22px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;box-sizing:border-box}#at-rotate .ph{width:54px;height:92px;border:4px solid #FFD58A;border-radius:12px;margin-bottom:26px;animation:atrot 2.4s ease-in-out infinite}#at-rotate small{display:block;margin-top:10px;font-weight:400;font-size:16px;opacity:.75}@keyframes atrot{0%,25%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}@media (orientation:portrait) and (max-width:1024px){#at-rotate{display:flex}}</style>";
+    const string rotDiv = "<div id=\"at-rotate\" role=\"alert\"><div class=\"ph\"></div>Rotate your device<small>Astral Tide sails in landscape</small></div>";
+    html = html.Replace("</head>", rot + "\n  </head>").Replace("<body>", "<body>\n    " + rotDiv);
     if (qaHook) html = html.Replace(".then((unityInstance) => {", ".then((unityInstance) => { window.atUnity = unityInstance;");   // dev / AT_QA builds only
     html = html.Replace("</head>", css + "\n  </head>").Replace("</body>", js + "\n  </body>");
     File.WriteAllText(p, html);

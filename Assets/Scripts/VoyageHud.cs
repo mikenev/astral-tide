@@ -28,7 +28,7 @@ namespace AstralTide {
         // fragments: five little stars, lit as you find them
         int mask = Progress.Frags(legIx);
         Label(R(20, 664, 200, 22), constDone ? $"{leg.name} constellation lit" : "Star fragments", 14, new Color(Ink.r, Ink.g, Ink.b, 0.85f), TextAnchor.MiddleLeft);
-        for (int i = 0; i < 5; i++){ bool on = (mask & (1 << i)) != 0; var rr = R(24 + i * 26, 642, 16, 16);
+        for (int i = 0; i < leg.fragments.Length; i++){ bool on = (mask & (1 << i)) != 0; var rr = R(24 + i * 26, 642, 16, 16);
           if (fragIcon){ var o = GUI.color; GUI.color = on ? new Color(1f, 0.95f, 0.8f) : new Color(1, 1, 1, 0.3f); GUI.DrawTexture(R(14 + i * 26, 630, 34, 34), fragIcon, ScaleMode.ScaleToFit, true); GUI.color = o; }
           else { Box(rr, on ? Gold : new Color(1, 1, 1, 0.25f)); } }
         // first-time hints
@@ -52,19 +52,20 @@ namespace AstralTide {
       Landmark.FallenStar => "Meteors drift across the sea. A bump only slows you down.",
       Landmark.GlacierBell => "Catch star gusts one after another to chain a longer boost.",
       Landmark.WhiteStar => "Sail through the star buoys. Take the run of buoys in a row for a big boost.",
+      Landmark.NebulaGate => "Twice the speed, twice the distance. Ride the swell and thread the star buoys.",
       _ => null };
     void TitleCard(float W){
       Box(new Rect(0, 0, Screen.width, Screen.height), new Color(0.08f, 0.05f, 0.18f, 0.3f));
-      Label(R(0, 120, W, 90), "Astral Tide", 64, Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
-      Label(R(0, 204, W, 34), "A calm voyage across the starlit sea", 19, new Color(0.95f, 0.9f, 1f, 0.9f), TextAnchor.MiddleCenter, FontStyle.Italic);
-      int cont = ContinueLeg(); bool started = Progress.Unlocked > 1 || Progress.Frags(0) != 0 || Progress.Best(0) > 0f;
-      Label(R(0, 290, W, 34), started ? (Progress.Complete ? "Voyage complete · sail any leg again" : $"Continue: Leg {cont + 1} · {Leg.All[cont].name}") : "Choose where to set out", 20, Gold);
+      Label(R(0, 92, W, 90), "Astral Tide", 64, Ink, TextAnchor.MiddleCenter, FontStyle.Bold);
+      Label(R(0, 174, W, 34), "A calm voyage across the starlit sea", 19, new Color(0.95f, 0.9f, 1f, 0.9f), TextAnchor.MiddleCenter, FontStyle.Italic);
+      int cont = ContinueLeg(); bool started = Progress.Reached > 1 || Progress.Frags(0) != 0 || Progress.Best(0) > 0f;
+      Label(R(0, 250, W, 34), started ? (Progress.Complete ? "Voyage complete · sail any leg again" : $"Continue: Leg {cont + 1} · {Leg.All[cont].name}") : "Choose where to set out", 20, Gold);
       for (int i = 0; i < Leg.All.Length; i++){
         var r = RowRect(i); bool open = i < Progress.Unlocked, sel = i == menuSel;
         Box(r, sel ? new Color(1f, 0.85f, 0.55f, 0.28f) : new Color(0.1f, 0.07f, 0.22f, open ? 0.45f : 0.25f));
         if (sel) Box(new Rect(r.x, r.y, 4 * S, r.height), Gold);
         int fr = Progress.Count(Progress.Frags(i)); float best = Progress.Best(i);
-        string tail = open ? $"{fr}/5 fragments{(best > 0f ? "  ·  " + FormatTime(best) : "")}" : "locked";
+        string tail = open ? $"{fr}/{Leg.All[i].fragments.Length} fragments{(best > 0f ? "  ·  " + FormatTime(best) : "")}" : "locked";
         Label(new Rect(r.x + 16 * S, r.y, r.width - 32 * S, r.height), $"{i + 1}.  {Leg.All[i].name}", 19, open ? Ink : new Color(1, 1, 1, 0.4f), TextAnchor.MiddleLeft, sel ? FontStyle.Bold : FontStyle.Normal);
         Label(new Rect(r.x + 16 * S, r.y, r.width - 32 * S, r.height), tail, 16, open ? new Color(Gold.r, Gold.g, Gold.b, 0.9f) : new Color(1, 1, 1, 0.4f), TextAnchor.MiddleRight);
       }
@@ -81,16 +82,16 @@ namespace AstralTide {
         var next = Leg.All[legIx + 1];
         Label(R(W / 2 - 320, 192, 640, 36), $"Leg {legIx + 1} · {leg.name}", 22, new Color(Gold.r, Gold.g, Gold.b, a));
         Label(R(W / 2 - 320, 230, 640, 60), $"You reached the {leg.landmarkName}", 38, new Color(1f, 0.97f, 0.92f, a), TextAnchor.MiddleCenter, FontStyle.Bold);
-        Label(R(W / 2 - 320, 296, 640, 30), $"Time {FormatTime(legTime)}   ·   Star fragments {fr} / 5{(constDone ? "  ·  constellation lit" : "")}", 19, new Color(1f, 1f, 1f, a));
+        Label(R(W / 2 - 320, 296, 640, 30), $"Time {FormatTime(legTime)}   ·   Star fragments {fr} / {leg.fragments.Length}{(constDone ? "  ·  constellation lit" : "")}", 19, new Color(1f, 1f, 1f, a));
         Label(R(W / 2 - 320, 340, 640, 32), $"The way opens: Leg {legIx + 2} · {next.name}", 21, new Color(0.85f, 0.95f, 1f, a), TextAnchor.MiddleCenter, FontStyle.Italic);
         Label(R(W / 2 - 320, 372, 640, 28), "Progress saved", 15, new Color(1f, 1f, 1f, 0.7f * a));
         if (stateT > 1.2f) Label(R(W / 2 - 320, 418, 640, 34), Application.isMobilePlatform ? "Tap to sail on" : "Enter · click · (A) to sail on", 19, new Color(1f, 1f, 1f, a * (0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 2.5f))));
       } else {
-        int all = 0; for (int i = 0; i < Leg.All.Length; i++) all += Progress.Count(Progress.Frags(i));
-        Label(R(W / 2 - 320, 192, 640, 36), "Leg 5 · The Cosmic Sea", 22, new Color(Gold.r, Gold.g, Gold.b, a));
+        int all = 0, tot = 0; for (int i = 0; i < Leg.All.Length; i++){ all += Progress.Count(Progress.Frags(i)); tot += Leg.All[i].fragments.Length; }
+        Label(R(W / 2 - 320, 192, 640, 36), $"Leg {legIx + 1} · {leg.name}", 22, new Color(Gold.r, Gold.g, Gold.b, a));
         Label(R(W / 2 - 320, 230, 640, 64), "The voyage is complete", 42, new Color(1f, 0.97f, 0.92f, a), TextAnchor.MiddleCenter, FontStyle.Bold);
-        Label(R(W / 2 - 320, 300, 640, 30), $"You reached the White Star in {FormatTime(legTime)}", 20, new Color(1f, 1f, 1f, a));
-        Label(R(W / 2 - 320, 336, 640, 30), $"Star fragments across the voyage: {all} / {Leg.All.Length * 5}", 19, new Color(1f, 1f, 1f, a));
+        Label(R(W / 2 - 320, 300, 640, 30), $"You reached the {leg.landmarkName} in {FormatTime(legTime)}", 20, new Color(1f, 1f, 1f, a));
+        Label(R(W / 2 - 320, 336, 640, 30), $"Star fragments across the voyage: {all} / {tot}", 19, new Color(1f, 1f, 1f, a));
         Label(R(W / 2 - 320, 376, 640, 56), "Thank you for sailing Astral Tide.", 20, new Color(0.85f, 0.95f, 1f, a), TextAnchor.MiddleCenter, FontStyle.Italic);
         if (stateT > 1.2f) Label(R(W / 2 - 320, 470, 640, 34), Application.isMobilePlatform ? "Tap to return to the harbour" : "Enter · click · (A) to return to the leg select", 19, new Color(1f, 1f, 1f, a * (0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 2.5f))));
       }

@@ -12,7 +12,7 @@ namespace AstralTide {
   public class VoyageAudio : MonoBehaviour {
     public static VoyageAudio I;
     public AudioClip music, arrival, lapping, wakeHiss, sailFill, gust, chime;
-    public AudioClip[] legMusic = new AudioClip[5];
+    public AudioClip[] legMusic = new AudioClip[6];
     public AudioClip currentRush, meteorBump, iceCreak, fragChime, constellation, boost, glacierBell;
     [Range(0, 1)] public float musicVolume = 0.55f, lappingVolume = 0.6f, wakeVolume = 0.75f, sfxVolume = 0.9f;
     public static bool Unlocked { get; private set; }

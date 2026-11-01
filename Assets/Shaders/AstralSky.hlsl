@@ -88,7 +88,8 @@ half3 AstralStarsAndGlow(float3 d, float t){
   d = normalize(d); float ae = abs(d.y); half3 c = 0;
   // stars: the first ones high up, more toward the horizon as _AT_StarAmount rises
   float vis = smoothstep(0.55 - _AT_StarAmount * 0.6, 0.85 - _AT_StarAmount * 0.6, ae) * saturate(_AT_StarAmount * 1.6);
-  float s = at_stars(d, 70.0, 0.22, 0.22, t) * 1.2 + at_stars(d, 160.0, 0.30, 0.18, t * 1.3) * 0.55 * saturate(_AT_StarAmount * 1.4 - 0.3);
+  float s = at_stars(d, 70.0, 0.22, 0.22, t) * 1.2 + at_stars(d, 160.0, 0.30, 0.18, t * 1.3) * 0.55 * saturate(_AT_StarAmount * 1.4 - 0.3)
+            + at_stars(d, 250.0, 0.34, 0.16, t * 0.9) * 0.6 * saturate(_AT_StarAmount - 1.2);   // M3 nebula leg: a third, denser layer (2x stars)
   c += half3(1.0, 0.95, 0.88) * s * vis * (_AT_StarfieldMix > 0.001 ? 0.6 : 1.0);
   if (_AT_StarfieldMix > 0.001){
     float3 du = normalize(float3(d.x, ae, d.z)); float2 uv = at_latlong(du) * float2(6, 3) + float2(t * 0.0008, 0);

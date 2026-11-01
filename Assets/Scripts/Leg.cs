@@ -1,6 +1,6 @@
 using UnityEngine;
 namespace AstralTide {
-  public enum Landmark { Spire, Gate, FallenStar, GlacierBell, WhiteStar }
+  public enum Landmark { Spire, Gate, FallenStar, GlacierBell, WhiteStar, NebulaGate }
 
   /// <summary>One leg of the voyage. Every leg uses the same sea and sky shaders, recoloured: the palette at the start and at
   /// the landmark (the sky shifts as you sail), the swell, sky features (aurora, shooting stars, nebula), the course, and what
@@ -11,7 +11,7 @@ namespace AstralTide {
     public Color top0, mid0, low0, hor0, top1, mid1, low1, hor1, glow, fog, water, seaTint = new Color(1, 1, 1, 0);
     public float stars0, stars1, aurora, shoot, nebula, gloss = 0.4f; public Color auroraA, auroraB, nebA, nebB, currentCol;
     public float waveAmp, waveLen = 30f, waveSpeed = 0.8f, waveDir = 20f, ripple = 0.06f;
-    public bool usePano;
+    public bool usePano; public float speedMul = 1f; public bool cosmicWake;   // M3: the nebula leg sails at 2x
     public Vector3 start, goal; public float startHeading;
     public Vector3[] gusts = new Vector3[0], fragments = new Vector3[0], buoys = new Vector3[0];
     public Vector3[] currents = new Vector3[0];       // pairs: segment start, end (the stream flows start -> end)
@@ -91,7 +91,23 @@ namespace AstralTide {
       };
       cosmic.buoys = cosmic.Line((0.1f, 0f), (0.18f, 12f), (0.26f, -10f), (0.34f, 8f), (0.42f, -6f), (0.6f, 0f), (0.625f, 0f), (0.65f, 0f), (0.675f, 0f), (0.7f, 0f), (0.725f, 0f), (0.75f, 0f));   // the last seven (about 52 m apart) are the boost run
       cosmic.fragments = cosmic.Line((0.14f, -45f), (0.3f, 40f), (0.48f, -45f), (0.56f, 45f), (0.9f, -35f));
-      return new[]{ dusk, aurora, ember, frost, cosmic };
+      cosmic.cosmicWake = true;
+      // M3: the Nebula Run. Twice the speed, twice the distance, twice the stars; the Cosmic Sea's swell and twin wake; the shared
+      // procedural sky dome recoloured teal and magenta (no panorama); the Cosmic Sea's music.
+      var nebula = new Leg {
+        index = 5, name = "The Nebula Run", landmarkName = "Nebula Gate", landmark = Landmark.NebulaGate, musicKey = "cosmic_sea_loop", panoKey = "AT_NebulaRun_SkyPano",
+        subtitle = "Twice as fast through a teal and magenta nebula, under twice the stars.",
+        hor0 = C(0x2A6E8C), low0 = C(0x3A2A7A), mid0 = C(0x1C1250), top0 = C(0x06041A), hor1 = C(0x8A3C9C), low1 = C(0x4A1E78), mid1 = C(0x1A0E48), top1 = C(0x050316),
+        glow = C(0xA8F4FF), fog = C(0x5A4A9A), water = C(0xC8D0FF), seaTint = new Color(0.92f, 0.95f, 1.05f, 0.18f), stars0 = 1.8f, stars1 = 2.2f,
+        nebula = 1.3f, nebA = C(0x2AB8C8), nebB = C(0xE04AC8), gloss = 0.9f,
+        waveAmp = 1.25f, waveLen = 48f, waveSpeed = 0.75f, waveDir = 0f, ripple = 0.04f,   // the Cosmic Sea's swell
+        start = Vector3.zero, goal = new Vector3(-160f, 0f, 4200f), lanternY = 24f, arriveDist = 30f, speedMul = 2f, cosmicWake = true,
+        fogStart = 170f, fogFull = 240f, turnaround = 215f,
+        constellation = new[]{ new Vector2(-34, 12), new Vector2(-27, 19), new Vector2(-19, 24), new Vector2(-11, 27), new Vector2(-4, 22), new Vector2(4, 22), new Vector2(11, 27), new Vector2(19, 24), new Vector2(27, 19), new Vector2(34, 12) },
+      };
+      nebula.buoys = nebula.Line((0.12f, 0f), (0.24f, 15f), (0.36f, -15f), (0.5f, 0f), (0.53f, 0f), (0.56f, 0f), (0.59f, 0f), (0.62f, 0f), (0.75f, 10f), (0.86f, -10f));
+      nebula.fragments = nebula.Line((0.06f, -45f), (0.15f, 40f), (0.24f, -50f), (0.33f, 45f), (0.42f, -40f), (0.47f, 50f), (0.68f, -45f), (0.78f, 40f), (0.88f, -40f), (0.94f, 30f));
+      return new[]{ dusk, aurora, ember, frost, cosmic, nebula };
     }
   }
 
@@ -114,11 +130,13 @@ namespace AstralTide {
 
   /// <summary>Progress in PlayerPrefs: legs unlocked, fragments found per leg (bit mask), best times; the voyage-complete flag.</summary>
   public static class Progress {
-    public static int Unlocked { get => Mathf.Clamp(PlayerPrefs.GetInt("at.unlocked", 1), 1, Leg.All.Length); set { PlayerPrefs.SetInt("at.unlocked", Mathf.Clamp(value, 1, Leg.All.Length)); PlayerPrefs.Save(); } }
+    /// <summary>M3 (Mike): every leg is open from the first screen. The furthest leg reached is still saved for Continue.</summary>
+    public static int Unlocked => Leg.All.Length;
+    public static int Reached { get => Mathf.Clamp(PlayerPrefs.GetInt("at.unlocked", 1), 1, Leg.All.Length); set { PlayerPrefs.SetInt("at.unlocked", Mathf.Clamp(value, 1, Leg.All.Length)); PlayerPrefs.Save(); } }
     public static int Frags(int leg) => PlayerPrefs.GetInt("at.frag." + leg, 0);
     public static void AddFrag(int leg, int i){ PlayerPrefs.SetInt("at.frag." + leg, Frags(leg) | (1 << i)); PlayerPrefs.Save(); }
     public static float Best(int leg) => PlayerPrefs.GetFloat("at.best." + leg, 0f);
-    public static void Finish(int leg, float t){ float b = Best(leg); if (b <= 0f || t < b) PlayerPrefs.SetFloat("at.best." + leg, t); if (leg + 2 > Unlocked) Unlocked = Mathf.Min(leg + 2, Leg.All.Length); if (leg == Leg.All.Length - 1) PlayerPrefs.SetInt("at.complete", 1); PlayerPrefs.Save(); }
+    public static void Finish(int leg, float t){ float b = Best(leg); if (b <= 0f || t < b) PlayerPrefs.SetFloat("at.best." + leg, t); if (leg + 2 > Reached) Reached = Mathf.Min(leg + 2, Leg.All.Length); if (leg == Leg.All.Length - 1) PlayerPrefs.SetInt("at.complete", 1); PlayerPrefs.Save(); }
     public static bool Complete => PlayerPrefs.GetInt("at.complete", 0) == 1;
     public static int Count(int mask){ int n = 0; for (; mask != 0; mask &= mask - 1) n++; return n; }
     public static void Clear(){ PlayerPrefs.DeleteKey("at.unlocked"); PlayerPrefs.DeleteKey("at.complete"); for (int i = 0; i < Leg.All.Length; i++){ PlayerPrefs.DeleteKey("at.frag." + i); PlayerPrefs.DeleteKey("at.best." + i); } PlayerPrefs.Save(); }

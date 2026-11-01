@@ -12,15 +12,17 @@ namespace AstralTide {
   public partial class Voyage : MonoBehaviour {
     // ---- scene refs (set by BuildWeb.SetupScene) ----
     public Camera cam; public Transform sea, sky, starVeil; public Boat boat;
-    public Transform[] landmarks = new Transform[5], landmarkMirrors = new Transform[5], halos = new Transform[5], landmarkAnim = new Transform[5];
-    public Light[] landmarkLights = new Light[5]; public float[] landmarkTop = new float[5], landmarkEm = new float[5]; public Material[] landmarkMats = new Material[5];
+    public Transform[] landmarks = new Transform[6], landmarkMirrors = new Transform[6], halos = new Transform[6], landmarkAnim = new Transform[6];
+    public Light[] landmarkLights = new Light[6]; public float[] landmarkTop = new float[6], landmarkEm = new float[6]; public Material[] landmarkMats = new Material[6];
     public Mesh quadMesh; public Material glowMat, gustMat, haloMat, fogMat, seaMat, fragMat, constMat, lineMat, rockMat, rockMirMat, iceMat, iceMirMat, buoyMat;
     public Texture2D skyPano, starfield, compassStrip, compassMarker;   // Art Dev (optional; null = procedural)
     public Material skyboxMat; public Light boatLight; public bool realModels;
     // M2 art (Art Dev, loaded by name in BuildWeb; null = procedural fallback)
-    public Texture2D[] panos = new Texture2D[5]; public Texture2D currentTex, fragIcon;
+    public Texture2D[] panos = new Texture2D[6]; public Texture2D currentTex, fragIcon;
     public GameObject meteorArt, floeArt, fragArt, buoyArt; public Material propMat, propMirMat;
-    public Transform[] landmarkAnimMir = new Transform[5]; public Transform clapper, clapperMir;
+    public Transform[] landmarkAnimMir = new Transform[6]; public Transform clapper, clapperMir;
+    public Material fragWarmMat, fragHaloMat, propWarmMat;   // M3: warm, glowing star fragments on Frost Mirror's ice
+    public GameObject whaleArt; public Material whaleMat, whaleMirMat, floeArtMat;   // Frost Mirror: AT_FrostWhale (scenery) and AT_IceFloe_Mat, by name
 
     enum State { Title, Sail, Arrive, LegDone, End }
     State state = State.Title; float stateT; bool paused;
@@ -50,11 +52,11 @@ namespace AstralTide {
       motesPS = MakePS("WakeMotes", 400); burstPS = MakePS("ArrivalBurst", 600); sparkPS = MakePS("Sparks", 400);
       menuSel = ContinueLeg();
       LoadLeg(menuSel);
-      Debug.Log($"[AT] ready unlocked={Progress.Unlocked} continue={menuSel + 1}");
+      Debug.Log($"[AT] ready unlocked={Progress.Unlocked} reached={Progress.Reached} maxSpeed={boat.maxSpeed:F0} whales={whaleSurf} reached={Progress.Reached} continue={menuSel + 1} legs={Leg.All.Length}");
     }
     static int ContinueLeg(){
-      for (int i = 0; i < Progress.Unlocked; i++) if (Progress.Best(i) <= 0f) return i;
-      return Progress.Unlocked - 1;
+      for (int i = 0; i < Progress.Reached; i++) if (Progress.Best(i) <= 0f) return i;
+      return Progress.Reached - 1;
     }
 
     // ---------- input (Salt and Glory's pointer cache: taps that begin and end between frames are kept) ----------
@@ -219,7 +221,7 @@ namespace AstralTide {
         StartLeg(menuSel, psrc);
       }
     }
-    Rect RowRect(int i) => R(Screen.width / S / 2 - 230, 336 + i * 42, 460, 38);
+    Rect RowRect(int i) => R(Screen.width / S / 2 - 230, 292 + i * 41, 460, 37);
     void StartLeg(int i, string src){ if (i != legIx || legDirty) LoadLeg(i); BeginSail(src); }
     void BeginSail(string src){
       state = State.Sail; stateT = 0f; legTime = 0f; VoyageAudio.I?.SetLeg(legIx); VoyageAudio.I?.SetVoyage(true);
@@ -227,7 +229,7 @@ namespace AstralTide {
     }
     void ToTitle(string src){
       state = State.Title; stateT = 0f; menuSel = ContinueLeg(); LoadLeg(menuSel);
-      Debug.Log($"[AT] title (leg select) by {src}: unlocked={Progress.Unlocked} continue={menuSel + 1}");
+      Debug.Log($"[AT] title (leg select) by {src}: unlocked={Progress.Unlocked} reached={Progress.Reached} maxSpeed={boat.maxSpeed:F0} whales={whaleSurf} continue={menuSel + 1}");
     }
 
     void Sail(float dt){
@@ -270,7 +272,7 @@ namespace AstralTide {
       if (stateT > 4f){
         bool last = legIx == Leg.All.Length - 1;
         state = last ? State.End : State.LegDone; stateT = 0f;
-        Debug.Log(last ? $"[AT] end card: the voyage is complete ({leg.name} in {FormatTime(legTime)})" : $"[AT] leg complete card: {leg.name} in {FormatTime(legTime)}; next {Leg.All[legIx + 1].name} unlocked={Progress.Unlocked}");
+        Debug.Log(last ? $"[AT] end card: the voyage is complete ({leg.name} in {FormatTime(legTime)})" : $"[AT] leg complete card: {leg.name} in {FormatTime(legTime)}; next {Leg.All[legIx + 1].name} unlocked={Progress.Unlocked} reached={Progress.Reached} maxSpeed={boat.maxSpeed:F0} whales={whaleSurf}");
       }
     }
     void Restart(string src){
@@ -285,14 +287,14 @@ namespace AstralTide {
       if (sky) sky.position = c; if (starVeil) starVeil.position = c;
       if (constRoot) constRoot.position = c;
     }
-    // chase camera (M2: pulled out ~10%), riding a little of the swell
-    public const float CamBack = 10.45f, CamSide = 2.42f, CamUp = 2.53f;
+    // chase camera (M2 and M3: each pulled out ~10%), riding a little of the swell
+    public const float CamBack = 11.5f, CamSide = 2.66f, CamUp = 2.78f;   // M3: another ~10% out (11.8 m)
     void UpdateCamera(float dt){
       camYaw = Mathf.LerpAngle(camYaw, boat.heading, 1f - Mathf.Exp(-dt * 2.2f));
       float yaw = camYaw + lookYaw;
       var rot = Quaternion.Euler(-(realModels ? 8f : 7f) - lookPitch, yaw, 0f);
       var back = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward; var side = Quaternion.Euler(0f, yaw, 0f) * Vector3.right;
-      var target = realModels ? boat.Pos - back * CamBack + side * CamSide + Vector3.up * CamUp : boat.Pos - back * 15.4f + Vector3.up * 3.4f;
+      var target = realModels ? boat.Pos - back * CamBack + side * CamSide + Vector3.up * CamUp : boat.Pos - back * 16.9f + Vector3.up * 3.7f;
       target.y += boat.WaveH * 0.6f;
       if (state >= State.Arrive){   // pull back and look up at the landmark as it lights
         float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((state != State.Arrive ? 4f + stateT : stateT) / 4f));
@@ -322,7 +324,7 @@ namespace AstralTide {
         $"gusts={gustsCaught} chain={chainMax} boost={boat.boost:F1} look={lookYaw:F1} camYaw={camYaw:F1} t={legTime:F1} " +
         $"waveH={boat.WaveH.ToString("F3", ci)} pitch={boat.Pitch.ToString("F2", ci)} roll={boat.Roll.ToString("F2", ci)} rock={boat.Rock.ToString("F2", ci)} modelY={(boat.model ? boat.model.position.y : 0f).ToString("F3", ci)} " +
         $"waveAmp={Waves.amp:F2} current={(inCurrent ? 1 : 0)} rides={currentRides} drift={boat.drift.magnitude:F2} bumps={bumps} buoys={buoysTaken} streaks={(streaking ? 1 : 0)} " +
-        $"frags={FragCount} fragMask={Progress.Frags(legIx)} lit={LitStars} const={(constDone ? 1 : 0)} unlocked={Progress.Unlocked} complete={(Progress.Complete ? 1 : 0)} menu={menuSel + 1} " +
+        $"frags={FragCount} fragMask={Progress.Frags(legIx)} lit={LitStars} const={(constDone ? 1 : 0)} unlocked={Progress.Unlocked} reached={Progress.Reached} maxSpeed={boat.maxSpeed:F0} whales={whaleSurf} complete={(Progress.Complete ? 1 : 0)} menu={menuSel + 1} " +
         $"camDist={Vector3.Distance(new Vector3(cam.transform.position.x, 0, cam.transform.position.z), new Vector3(boat.Pos.x, 0, boat.Pos.z)):F2} sky={(sky && sky.gameObject.activeSelf ? "dome" : "pano")} cosmicWake={CosmicWakeOn} {(VoyageAudio.I ? VoyageAudio.I.Status() : "")}");
     }
     /// <summary>"x,z,heading,sail": put the ship somewhere (keeps the state; from the title it starts the voyage).</summary>
@@ -347,7 +349,7 @@ namespace AstralTide {
         case "current": p = leg.currents[i * 2]; dir = (leg.currents[i * 2 + 1] - p).normalized; back = -8f; break;
         case "buoy": p = leg.buoys[i]; back = 40f; break;
         case "gust": p = leg.gusts[i]; break;
-        case "goal": back = leg.arriveDist + 30f; dir = leg.Dir; break;
+        case "goal": back = leg.arriveDist + 30f + (leg.speedMul - 1f) * 30f; dir = leg.Dir; break;
       }
       var start = p - dir * back; float h = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
       QAPlace($"{start.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{start.z.ToString(System.Globalization.CultureInfo.InvariantCulture)},{h.ToString(System.Globalization.CultureInfo.InvariantCulture)},1");
