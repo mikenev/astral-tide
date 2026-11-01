@@ -317,6 +317,17 @@ namespace AstralTide {
 #endif
 #if DEVELOPMENT_BUILD || UNITY_EDITOR || AT_QA
     // QA hook for the self-check (window.atUnity.SendMessage('Voyage', ...)); compiled out of the release build
+    /// <summary>QA: the lowest gap between the water-mask lid (or a lid at y) and the sea, sampled over the hull's footprint.
+    /// Negative means the swell rises above the lid there, i.e. water could show inside the hull.</summary>
+    float HullClear(float y){
+      var lidT = boat.model ? boat.model.Find("WaterMask") : null; var mf = lidT ? lidT.GetComponent<MeshFilter>() : null; if (!mf) return 99f;
+      var b = mf.sharedMesh.bounds; float ly = y < 0f ? b.max.y : y, min = 99f;
+      for (int i = 0; i <= 4; i++) for (int k = 0; k <= 8; k++){
+        var lp = new Vector3(Mathf.Lerp(b.min.x, b.max.x, i / 4f) * 0.8f, ly, Mathf.Lerp(b.min.z, b.max.z, k / 8f) * 0.85f);
+        var wp = lidT.TransformPoint(lp); min = Mathf.Min(min, wp.y - Waves.H(wp.x, wp.z));
+      }
+      return min;
+    }
     public void QAStatus(){
       var ci = System.Globalization.CultureInfo.InvariantCulture;
       Debug.Log($"[AT] status state={state} paused={(paused ? 1 : 0)} leg={legIx + 1} x={boat.Pos.x:F1} z={boat.Pos.z:F1} heading={boat.heading:F1} speed={boat.speed:F2} sail={boat.sail:F2} rudder={boat.rudder:F2} " +
@@ -325,7 +336,7 @@ namespace AstralTide {
         $"waveH={boat.WaveH.ToString("F3", ci)} pitch={boat.Pitch.ToString("F2", ci)} roll={boat.Roll.ToString("F2", ci)} rock={boat.Rock.ToString("F2", ci)} modelY={(boat.model ? boat.model.position.y : 0f).ToString("F3", ci)} " +
         $"waveAmp={Waves.amp:F2} current={(inCurrent ? 1 : 0)} rides={currentRides} drift={boat.drift.magnitude:F2} bumps={bumps} buoys={buoysTaken} streaks={(streaking ? 1 : 0)} " +
         $"frags={FragCount} fragMask={Progress.Frags(legIx)} lit={LitStars} const={(constDone ? 1 : 0)} unlocked={Progress.Unlocked} reached={Progress.Reached} maxSpeed={boat.maxSpeed:F0} whales={whaleSurf} complete={(Progress.Complete ? 1 : 0)} menu={menuSel + 1} " +
-        $"camDist={Vector3.Distance(new Vector3(cam.transform.position.x, 0, cam.transform.position.z), new Vector3(boat.Pos.x, 0, boat.Pos.z)):F2} sky={(sky && sky.gameObject.activeSelf ? "dome" : "pano")} cosmicWake={CosmicWakeOn} {(VoyageAudio.I ? VoyageAudio.I.Status() : "")}");
+        $"camDist={Vector3.Distance(new Vector3(cam.transform.position.x, 0, cam.transform.position.z), new Vector3(boat.Pos.x, 0, boat.Pos.z)):F2} sky={(sky && sky.gameObject.activeSelf ? "dome" : "pano")} cosmicWake={CosmicWakeOn} hullClear={HullClear(-1f).ToString("F2", ci)} hullClearOld={HullClear(0.12f).ToString("F2", ci)} {(VoyageAudio.I ? VoyageAudio.I.Status() : "")}");
     }
     /// <summary>"x,z,heading,sail": put the ship somewhere (keeps the state; from the title it starts the voyage).</summary>
     public void QAPlace(string a){
