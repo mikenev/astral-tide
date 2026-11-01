@@ -78,3 +78,26 @@ All four share one atlas: `AT_Props_Albedo.png` + `AT_Props_Emission.png` (1024�
 | `FX/AT_Current.png` | 256×1024 RGBA glowing teal current stream: U = across (alpha 0 at the edges), V = along, **tiles seamlessly in V**, with flowing streaks and sparkles. | Same as `AT_Wake`: Clamp U / Repeat V. Put it on a long quad or spline ribbon lying on the water and scroll V over time (offset.y += speed·t), additive or alpha unlit. |
 | `Sky/Constellation/AT_ConstellationLine.png` | 256×32 soft white-blue glowing line, tiles in U. | Default texture, Repeat U / Clamp V. Use a LineRenderer (Texture Mode Tile or Stretch) with an additive unlit material, width ~0.02–0.05 of the sky distance. Fade alpha in as fragments are collected. |
 | `Sky/Constellation/AT_ConstellationNode.png` | 128² star node: bright core, small 4-point glint, thin ring (RGBA). | Sprite (Single), 100 PPU, no mipmaps. One per constellation star; dim until its fragment is found, then brighten or pulse. |
+
+---
+
+# Astral Tide – M3 art (Frost Mirror whale + ice floe material)
+
+Same conventions as M1/M2: original procedural art (Blender 4.2 low-poly, Pillow textures), metres, scale 1, `.meta` files included.
+
+## Whale – `Creatures/`
+| File | What | Use |
+|---|---|---|
+| `AT_FrostWhale.fbx` | Scenery-only whale (not an obstacle): blunt head with a glowing mouth line and dark eyes, long tapering body, wide horizontal notched flukes, two long pectoral fins, small dorsal fin, steel-blue back / pale belly, a row of small glowing frost studs on the back. ~312 tris (Unity count). **~12.5 m long (z -6.45 tail tip … +6.05 nose), 6.2 m fin span, y -0.74 … 2.0. Faces +Z, pivot on the waterline at y=0** (back and dorsal ride above the water when idle). Hierarchy: `AT_FrostWhale` (root) › `Rig` (animated) › `WhaleBody` (mesh) + `Anchor_Spout` (0, 1.57, 4.55) = blowhole. Imports with `bakeAxisConversion` on, Generic rig, no materials. | One URP/Lit material: Base Map `AT_FrostWhale_Albedo`, Emission Map `AT_FrostWhale_Emission`, emission colour white, intensity ~1.5–2.5 (subtle) + Bloom. Spout: parent a short upward particle burst (pale white-blue, ~3 m) to `Anchor_Spout`. Scale 0.7–1.5 for variety. |
+| `AT_FrostWhale_Albedo.png` / `_Emission.png` | 512² flat-band atlas (back, flank, belly, fin, glow, eye). Emission is black except the glow band. | Base Map (sRGB) / Emission Map. Use Point filtering or leave Bilinear. |
+
+**Clip `Breach`** (4.0 s, 30 fps, no loop) animates only the `Rig` child: a short dive, then a leap that clears the water with a pitch-up and a roll (peak ~6 m up and ~6.5 m forward at 2 s), a side splash-down ~8.5 m ahead, and a glide back to the idle pose, so it starts and ends on the rest pose. The root never moves. Play it with an `Animator` (Generic) or `Animation`. Fire a splash at ~2.9 s, near `Rig` (z ≈ +8). Idle swim: leave the clip off and bob the root in code.
+
+## Ice floe material – `Materials/` + `Shaders/`
+| File | What | Use |
+|---|---|---|
+| `Shaders/AT_IceFloe.shader` (`AstralTide/IceFloe`) | Pipeline-agnostic unlit pass (renders in URP). It **needs no UVs**: it projects the ice tile top-down in world XZ, multiplies by the mesh's vertex colours (so the snow/side/under colours from `VoyageLegs.FloeMesh` still show), builds flat facet normals from screen derivatives, lights with one fixed key-light direction + ambient, and adds a bright HDR fresnel rim plus a top-edge sparkle as emission. | Works on any mesh. Properties: `_Tiling` (0.25 = 4 m tiles), `_Tint`, `_UseVertexColor`, `_LightDir`, `_Ambient`, `_RimColor` (HDR), `_RimPower`, `_EdgeGlow`. Bloom makes the rim glow. |
+| `Materials/AT_IceFloe_Mat.mat` | Material using that shader, with `AT_IceFloe_Tile` assigned. | Assign it to the floe's `MeshRenderer.sharedMaterial`. |
+| `Materials/AT_IceFloe_Tile.png` | 512² seamless pale blue-white faceted ice (cell pattern with bright crack lines). | Repeat wrap. |
+
+Preview (box only): `/workspace/astraltide-previews/art/m3/whale_ice.png` (Blender renders; the floe there approximates the shader).
