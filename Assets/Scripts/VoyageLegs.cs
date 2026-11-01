@@ -339,37 +339,55 @@ namespace AstralTide {
         if (leg.landmark == Landmark.GlacierBell){ anim.localRotation = Quaternion.identity; if (clapper) clapper.localRotation = Quaternion.identity; }
       }
     }
-    // ---------- Frost Mirror's whales: 2-3 of Art Dev's AT_FrostWhale breaching and spouting far off (scenery only, no colliders) ----------
-    Transform[] whales = new Transform[0], whaleMirs = new Transform[0]; float[] whalePh = new float[0]; Vector3[] whaleBase = new Vector3[0]; int whaleSurf; bool[] whaleUp = new bool[0];
-    const float WhaleCycle = 18f, WhaleUp = 6f;
+    // ---------- Frost Mirror's whales: 3 x Art Dev's AT_FrostWhale (scenery only, no colliders), side-on 30-60 m out,
+    // staggered 4 s Breach clips, our own spout at Anchor_Spout and a splash at the ~2.9 s landing ~8 m ahead of the root ----------
+    Transform[] whales = new Transform[0], whaleMirs = new Transform[0]; Animator[] whaleAn = new Animator[0], whaleMirAn = new Animator[0];
+    Transform[] whaleSpout = new Transform[0]; int[] whaleCyc = new int[0]; bool[] whaleSplashed = new bool[0], whaleBlown = new bool[0]; int whaleSurf;
+    const float WhaleCycle = 12f, WhaleClip = 4f;
     void MakeWhale(){
-      whales = whaleMirs = new Transform[0]; whaleSurf = 0;
+      whales = whaleMirs = whaleSpout = new Transform[0]; whaleAn = whaleMirAn = new Animator[0]; whaleSurf = 0;
       if (leg.landmark != Landmark.GlacierBell) return;
-      if (!whaleArt){ Debug.Log("[AT] whales: AT_FrostWhale not in the build yet (skipped)"); return; }
-      int n = 3; whales = new Transform[n]; whaleMirs = new Transform[n]; whalePh = new float[n]; whaleBase = new Vector3[n]; whaleUp = new bool[n];
+      if (!whaleArt){ Debug.Log("[AT] whales: AT_FrostWhale not in the build (skipped)"); return; }
+      int n = 3; whales = new Transform[n]; whaleMirs = new Transform[n]; whaleAn = new Animator[n]; whaleMirAn = new Animator[n]; whaleSpout = new Transform[n];
+      whaleCyc = new int[n]; whaleSplashed = new bool[n]; whaleBlown = new bool[n];
       for (int i = 0; i < n; i++){
-        whaleBase[i] = leg.start + leg.Dir * leg.Length * (0.3f + 0.25f * i) + Right * (i % 2 == 0 ? 1f : -1f) * (330f + 60f * i);
-        whalePh[i] = i * 6.5f;
-        Transform Make(string nm, Material m){ var r = new GameObject(nm).transform; r.SetParent(legRoot, false); Prop(whaleArt, m, r).localScale = Vector3.one * 1.5f;
-          foreach (var c in r.GetComponentsInChildren<Collider>()) Destroy(c); r.gameObject.SetActive(false); return r; }
-        whales[i] = Make("Whale" + i, whaleMat); whaleMirs[i] = Make("WhaleMirror" + i, whaleMirMat ? whaleMirMat : whaleMat); whaleMirs[i].localScale = new Vector3(1, -1, 1);
+        Transform Make(string nm, Material m, out Animator an){
+          var t = Prop(whaleArt, m, legRoot); t.name = nm;
+          foreach (var c in t.GetComponentsInChildren<Collider>()) Destroy(c);
+          an = t.GetComponent<Animator>() ?? t.gameObject.AddComponent<Animator>(); an.runtimeAnimatorController = whaleCtrl; an.applyRootMotion = false; an.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+          t.gameObject.SetActive(false); return t;
+        }
+        whales[i] = Make("Whale" + i, whaleMat, out whaleAn[i]); whaleMirs[i] = Make("WhaleMirror" + i, whaleMirMat ? whaleMirMat : whaleMat, out whaleMirAn[i]);
+        foreach (var t in whales[i].GetComponentsInChildren<Transform>()) if (t.name == "Anchor_Spout") whaleSpout[i] = t;
+        whaleCyc[i] = -1;
       }
-      Debug.Log($"[AT] whales: {n} x AT_FrostWhale breaching in the distance");
+      Debug.Log($"[AT] whales: {n} x AT_FrostWhale breaching (anim={(whaleCtrl ? 1 : 0)} spout={(whaleSpout[0] ? 1 : 0)})");
     }
     void WhaleTick(){
       for (int i = 0; i < whales.Length; i++){
-        float p = Mathf.Repeat(Time.time + whalePh[i], WhaleCycle); bool up = p < WhaleUp;
-        whales[i].gameObject.SetActive(up); whaleMirs[i].gameObject.SetActive(up);
-        if (up && !whaleUp[i]){ whaleSurf++; Debug.Log($"[AT] a whale breaches ({whaleSurf})"); }
-        whaleUp[i] = up; if (!up) continue;
-        float k = p / WhaleUp; var dir = leg.Dir; var pos = whaleBase[i] + dir * Mathf.Lerp(-20f, 20f, k);
-        pos.y = Mathf.Sin(k * Mathf.PI) * 6f - 3f;   // a breach: up out of the water and back under
-        var rot = Quaternion.LookRotation(dir) * Quaternion.Euler(Mathf.Lerp(-40f, 45f, k), 0f, 0f);
-        whales[i].SetPositionAndRotation(pos, rot);
-        whaleMirs[i].SetPositionAndRotation(new Vector3(pos.x, -pos.y, pos.z), new Quaternion(-rot.x, rot.y, -rot.z, rot.w));
-        if (k > 0.1f && k < 0.35f && Random.value < Time.deltaTime * 40f)   // the spout
-          Emit(sparkPS, whaleBase[i] + dir * Mathf.Lerp(-20f, 20f, k) + Vector3.up * 2f, Vector3.up * Random.Range(8f, 13f) + Random.insideUnitSphere * 2f, Random.Range(1.2f, 2.4f), 1.4f, new Color(0.85f, 0.95f, 1f));
-        if (k > 0.85f && Random.value < Time.deltaTime * 30f) Emit(sparkPS, new Vector3(pos.x, 0.5f, pos.z) + Random.insideUnitSphere * 4f, Vector3.up * 5f + Random.insideUnitSphere * 3f, Random.Range(1f, 2f), 1.2f, Color.white);   // splash
+        float e = legTime + 3f - i * 4f; if (e < 0f){ continue; }
+        int cyc = Mathf.FloorToInt(e / WhaleCycle); float p = e - cyc * WhaleCycle;
+        if (cyc != whaleCyc[i]){   // a new breach near the ship: side-on, ahead and off to one side
+          whaleCyc[i] = cyc; whaleSplashed[i] = whaleBlown[i] = false;
+          float side = ((i + cyc) % 2 == 0) ? 1f : -1f, sc = 0.9f + 0.25f * i;
+          var pos = boat.Pos + leg.Dir * (40f + 10f * i) + Right * side * (30f + 12f * i); pos.y = 0f;
+          var rot = Quaternion.LookRotation(-Right * side * 0.3f + leg.Dir * (i == 1 ? -1f : 1f));
+          whales[i].SetPositionAndRotation(pos, rot); whales[i].localScale = Vector3.one * sc;
+          whaleMirs[i].SetPositionAndRotation(pos, rot); whaleMirs[i].localScale = new Vector3(sc, -sc, sc);
+          whales[i].gameObject.SetActive(true); whaleMirs[i].gameObject.SetActive(true);
+          if (whaleAn[i].runtimeAnimatorController){ whaleAn[i].Play("Breach", 0, 0f); whaleMirAn[i].Play("Breach", 0, 0f); }
+          whaleSurf++; Debug.Log($"[AT] a whale breaches ({whaleSurf})");
+        }
+        bool vis = p < WhaleClip + 0.6f; if (whales[i].gameObject.activeSelf != vis){ whales[i].gameObject.SetActive(vis); whaleMirs[i].gameObject.SetActive(vis); }
+        if (!vis) continue;
+        var w = whales[i];
+        if (whaleSpout[i] && (p < 0.9f || (p > 3.4f && p < 4.2f)) && Random.value < Time.deltaTime * 45f)   // the spout: a short pale burst ~3 m up
+          Emit(sparkPS, whaleSpout[i].position + Random.insideUnitSphere * 0.2f, Vector3.up * Random.Range(4f, 6.5f) + Random.insideUnitSphere * 0.8f, Random.Range(0.5f, 1.1f), 1.0f, new Color(0.88f, 0.96f, 1f));
+        if (!whaleSplashed[i] && p >= 2.9f){   // splash-down ~8 m ahead of the root
+          whaleSplashed[i] = true; var at = w.position + w.forward * 8f * w.localScale.x; at.y = 0.3f;
+          for (int k = 0; k < 40; k++) Emit(sparkPS, at + Random.insideUnitSphere * 2.5f, Vector3.up * Random.Range(3f, 9f) + Random.insideUnitSphere * 4f, Random.Range(0.6f, 1.5f), 1.3f, new Color(0.9f, 0.97f, 1f));
+          Debug.Log($"[AT] whale splash ({i})");
+        }
       }
     }
     static float Flat(Vector3 a, Vector3 b) => Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));

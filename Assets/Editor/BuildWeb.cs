@@ -269,7 +269,7 @@ public static class BuildWeb {
     var hullMesh = SaveMesh("ShipHull", ShipHull()); var sailMesh = SaveMesh("ShipSail", ShipSail()); var spireMesh = SaveMesh("LanternSpire", Spire());
     var quad = SaveMesh("GlowQuad", Quad()); var seaMesh = SaveMesh("SeaRings", SeaRings(146, 160)); var skyMesh = SaveMesh("SkySphere", SkySphere(48, 32));
     var post = PostFX();
-    AlwaysInclude("AstralTide/Sky", "AstralTide/Stars", "AstralTide/Sea", "AstralTide/Lit", "AstralTide/Glow", "AstralTide/FX", "AstralTide/WaterMask", "Skybox/Panoramic", "Universal Render Pipeline/Lit");
+    AlwaysInclude("AstralTide/Sky", "AstralTide/Stars", "AstralTide/Sea", "AstralTide/Lit", "AstralTide/Glow", "AstralTide/FX", "AstralTide/WaterMask", "Skybox/Panoramic", "Universal Render Pipeline/Lit", "AstralTide/IceFloe");
     AssetDatabase.SaveAssets();
 
     var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -426,12 +426,25 @@ public static class BuildWeb {
     var fragHaloMat = Mat("FragmentHaloWarm", "AstralTide/Glow", 2999, m => { m.SetColor("_Color", new Color(1f, 0.55f, 0.2f, 0.75f)); m.SetFloat("_Billboard", 1); m.SetFloat("_Core", 1.6f); });
     // Frost Mirror whales: Art Dev's AT_FrostWhale only (scenery, no colliders). If it hasn't landed, there are no whales.
     var whaleArt = Find<GameObject>("Assets/Art", "AT_FrostWhale"); Material whaleMat = null, whaleMirMat = null;
-    if (whaleArt){ var wa = Find<Texture2D>("Assets/Art", "AT_FrostWhale_Albedo"); var we = Find<Texture2D>("Assets/Art", "AT_FrostWhale_Emission"); whaleMat = Lit("WhaleLit", wa, we, 3f); whaleMirMat = Mirror("WhaleMirror", wa, we, 2006, 1.5f); }
+    if (whaleArt){ var wa = Find<Texture2D>("Assets/Art", "AT_FrostWhale_Albedo"); var we = Find<Texture2D>("Assets/Art", "AT_FrostWhale_Emission"); whaleMat = Lit("WhaleLit", wa, we, 2f); whaleMirMat = Mirror("WhaleMirror", wa, we, 2006, 1.5f); }
     // ice floes: Art Dev's AT_IceFloe_Mat by name on our faceted floe mesh, else the procedural icy vertex-colour material
-    var floeMat = Find<Material>("Assets/Art", "AT_IceFloe_Mat");
+    var floeArtSrc = Find<Material>("Assets/Art", "AT_IceFloe_Mat"); Material floeMat = null;
+    if (floeArtSrc && floeArtSrc.shader && floeArtSrc.shader.name == "AstralTide/IceFloe"){   // a copy lit by the Frost Mirror sun (Art Dev's asset stays untouched)
+      floeMat = new Material(floeArtSrc){ name = "IceFloeFrost" }; floeMat.SetVector("_LightDir", -(Quaternion.Euler(16f, 35f, 0f) * Vector3.forward));
+      AssetDatabase.DeleteAsset("Assets/Generated/IceFloeFrost.mat"); AssetDatabase.CreateAsset(floeMat, "Assets/Generated/IceFloeFrost.mat");
+    } else if (floeArtSrc) Debug.LogWarning("[Setup] AstralTide/IceFloe unsupported: procedural ice (fallback)");
+    RuntimeAnimatorController whaleCtrl = null;
+    if (whaleArt){
+      var clip = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(whaleArt)).OfType<AnimationClip>().FirstOrDefault(c => !c.name.StartsWith("__preview") && c.name.Contains("Breach"));
+      if (clip){ AssetDatabase.DeleteAsset("Assets/Generated/FrostWhale.controller");
+        var ac = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath("Assets/Generated/FrostWhale.controller");
+        var stIdle = ac.layers[0].stateMachine.AddState("Idle"); var stB = ac.layers[0].stateMachine.AddState("Breach"); stB.motion = clip; ac.layers[0].stateMachine.defaultState = stIdle; whaleCtrl = ac;
+        Debug.Log("[Setup] whale Breach clip " + clip.name + " " + clip.length + "s");
+      } else Debug.LogWarning("[Setup] AT_FrostWhale has no Breach clip");
+    }
 
     var v = new GameObject("Voyage").AddComponent<Voyage>();
-    v.propWarmMat = propWarmMat; v.fragWarmMat = fragWarmMat; v.fragHaloMat = fragHaloMat; v.whaleArt = whaleArt; v.whaleMat = whaleMat; v.whaleMirMat = whaleMirMat; v.floeArtMat = floeMat;
+    v.propWarmMat = propWarmMat; v.fragWarmMat = fragWarmMat; v.fragHaloMat = fragHaloMat; v.whaleArt = whaleArt; v.whaleCtrl = whaleCtrl; v.whaleMat = whaleMat; v.whaleMirMat = whaleMirMat; v.floeArtMat = floeMat;
     v.landmarks = lmRoot; v.landmarkMirrors = lmMir; v.halos = lmHalo; v.landmarkLights = lmLight; v.landmarkTop = lmTop; v.landmarkMats = lmMat; v.landmarkEm = lmEm;
     v.landmarkAnim = lmAnim; v.landmarkAnimMir = lmAnimMir; v.clapper = clapper; v.clapperMir = clapperMir;
     v.panos = panos; v.currentTex = currentTex; v.fragIcon = nodeTex; v.starVeil = veil.transform;

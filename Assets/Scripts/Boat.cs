@@ -35,7 +35,8 @@ namespace AstralTide {
     public void Tick(float dt, float stopAt = -1f){
       float target = maxSpeed * Mathf.SmoothStep(0f, 1f, sail) + boost;
       if (stopAt >= 0f) target = Mathf.Min(target, stopAt);
-      speed = Mathf.MoveTowards(speed, target, (target > speed ? 1.6f + boost * 0.4f : 1.4f) * dt);
+      float am = maxSpeed / 11f;   // faster legs (the nebula) get there in the same time
+      speed = Mathf.MoveTowards(speed, target, (target > speed ? 1.6f * am + boost * 0.4f : 1.4f * am) * dt);
       boost = Mathf.MoveTowards(boost, 0f, 2.2f * dt);
       heading = Mathf.Repeat(heading + rudder * turnRate * (0.35f + 0.65f * Mathf.Clamp01(speed / 5f)) * dt, 360f);
       transform.rotation = Quaternion.Euler(0f, heading, 0f);

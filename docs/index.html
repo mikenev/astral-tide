@@ -6,9 +6,11 @@
     <title>Astral Tide</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="stylesheet" href="TemplateData/style.css">
+  <style id="at-rotate-css">#at-rotate{display:none;position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:#1B1638;color:#F4EEFF;font:600 22px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;box-sizing:border-box}#at-rotate .ph{width:54px;height:92px;border:4px solid #FFD58A;border-radius:12px;margin-bottom:26px;animation:atrot 2.4s ease-in-out infinite}#at-rotate small{display:block;margin-top:10px;font-weight:400;font-size:16px;opacity:.75}@keyframes atrot{0%,25%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}@media (orientation:portrait) and (max-width:1024px){#at-rotate{display:flex}}</style>
   <style id="at-input-guard-css">html,body{overscroll-behavior:none;background:#1B1638}#unity-container.unity-desktop{position:fixed;left:0;top:0;right:0;bottom:0;transform:none;display:flex;flex-direction:column;align-items:center;justify-content:center}#unity-canvas{touch-action:none;-ms-touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;outline:none}</style>
   </head>
   <body>
+    <div id="at-rotate" role="alert"><div class="ph"></div>Rotate your device<small>Astral Tide sails in landscape</small></div>
     <div id="unity-container" class="unity-desktop">
       <canvas id="unity-canvas" width=1280 height=720 tabindex="-1"></canvas>
       <div id="unity-loading-bar">

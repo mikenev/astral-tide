@@ -22,7 +22,7 @@ namespace AstralTide {
     public GameObject meteorArt, floeArt, fragArt, buoyArt; public Material propMat, propMirMat;
     public Transform[] landmarkAnimMir = new Transform[6]; public Transform clapper, clapperMir;
     public Material fragWarmMat, fragHaloMat, propWarmMat;   // M3: warm, glowing star fragments on Frost Mirror's ice
-    public GameObject whaleArt; public Material whaleMat, whaleMirMat, floeArtMat;   // Frost Mirror: AT_FrostWhale (scenery) and AT_IceFloe_Mat, by name
+    public GameObject whaleArt; public RuntimeAnimatorController whaleCtrl; public Material whaleMat, whaleMirMat, floeArtMat;   // Frost Mirror: AT_FrostWhale (scenery) and AT_IceFloe_Mat, by name
 
     enum State { Title, Sail, Arrive, LegDone, End }
     State state = State.Title; float stateT; bool paused;
