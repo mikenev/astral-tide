@@ -172,10 +172,10 @@ public static class BuildWeb {
   /// <summary>The water mask lid: the convex outline (XZ) of the hull's vertices around the waterline, shrunk a little, as a flat
   /// polygon at lidY. Drawn depth-only between the ship and the sea, so no water shows inside the hull.</summary>
   static Mesh HullLid(Transform model, float lidY){
-    var pts = new List<Vector2>();
+    var pts = new List<Vector2>(); var ys = new List<Vector3>();
     foreach (var mf in model.GetComponentsInChildren<MeshFilter>()){
       if (!mf.sharedMesh || mf.GetComponentInParent<Transform>().name.Contains("Sail") || mf.name.Contains("Sail") || mf.name.Contains("Lantern")) continue;
-      foreach (var vv in mf.sharedMesh.vertices){ var lp = model.InverseTransformPoint(mf.transform.TransformPoint(vv)); if (lp.y > -0.3f && lp.y < lidY + 0.45f) pts.Add(new Vector2(lp.x, lp.z)); }
+      foreach (var vv in mf.sharedMesh.vertices){ var lp = model.InverseTransformPoint(mf.transform.TransformPoint(vv)); if (lp.y > -0.3f && lp.y < 1.6f){ pts.Add(new Vector2(lp.x, lp.z)); ys.Add(lp); } }
     }
     if (pts.Count < 3){ Debug.LogWarning("[Setup] hull lid: no waterline vertices"); return null; }
     pts = pts.Distinct().OrderBy(p => p.x).ThenBy(p => p.y).ToList();
@@ -186,6 +186,11 @@ public static class BuildWeb {
     for (int i = pts.Count - 2; i >= 0; i--){ var p = pts[i]; while (hull.Count >= lower && Cross(hull[hull.Count - 2], hull[hull.Count - 1], p) <= 0) hull.RemoveAt(hull.Count - 1); hull.Add(p); }
     hull.RemoveAt(hull.Count - 1);
     var c = Vector2.zero; foreach (var p in hull) c += p; c /= hull.Count;
+    // M4: the lid sits just under the gunwale (the highest rim point of the outline), not at the waterline, so a big swell
+    // rising up the hull can never show inside it: every line of sight into the open hull crosses the lid first.
+    var rim = new List<float>(); foreach (var p in hull){ float hy = -9f; foreach (var q in ys) if (Mathf.Abs(q.x - p.x) < 1e-4f && Mathf.Abs(q.z - p.y) < 1e-4f) hy = Mathf.Max(hy, q.y); rim.Add(hy); }
+    rim.Sort(); float gun = rim[rim.Count / 2];   // the median rim height: the gunwale, ignoring a raised stem or stern post
+    lidY = Mathf.Max(lidY, gun - 0.04f);
     var v = new List<Vector3>{ new Vector3(c.x, lidY, c.y) }; var t = new List<int>();
     foreach (var p in hull){ var q = c + (p - c) * 0.95f; v.Add(new Vector3(q.x, lidY, q.y)); }
     for (int i = 0; i < hull.Count; i++){ t.Add(0); t.Add(1 + i); t.Add(1 + (i + 1) % hull.Count); }
@@ -430,7 +435,7 @@ public static class BuildWeb {
     // ice floes: Art Dev's AT_IceFloe_Mat by name on our faceted floe mesh, else the procedural icy vertex-colour material
     var floeArtSrc = Find<Material>("Assets/Art", "AT_IceFloe_Mat"); Material floeMat = null;
     if (floeArtSrc && floeArtSrc.shader && floeArtSrc.shader.name == "AstralTide/IceFloe"){   // a copy lit by the Frost Mirror sun (Art Dev's asset stays untouched)
-      floeMat = new Material(floeArtSrc){ name = "IceFloeFrost" }; floeMat.SetVector("_LightDir", -(Quaternion.Euler(16f, 35f, 0f) * Vector3.forward));
+      floeMat = new Material(floeArtSrc){ name = "IceFloeFrost" }; floeMat.SetColor("_RimColor", new Color(0.55f, 0.8f, 1f)); floeMat.SetFloat("_EdgeGlow", 0.3f); floeMat.SetColor("_Tint", floeArtSrc.GetColor("_Tint") * 0.85f); /* M4: under the bloom threshold, so the ice stops washing to white */ floeMat.SetVector("_LightDir", -(Quaternion.Euler(16f, 35f, 0f) * Vector3.forward));
       AssetDatabase.DeleteAsset("Assets/Generated/IceFloeFrost.mat"); AssetDatabase.CreateAsset(floeMat, "Assets/Generated/IceFloeFrost.mat");
     } else if (floeArtSrc) Debug.LogWarning("[Setup] AstralTide/IceFloe unsupported: procedural ice (fallback)");
     RuntimeAnimatorController whaleCtrl = null;
@@ -438,7 +443,8 @@ public static class BuildWeb {
       var clip = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(whaleArt)).OfType<AnimationClip>().FirstOrDefault(c => !c.name.StartsWith("__preview") && c.name.Contains("Breach"));
       if (clip){ AssetDatabase.DeleteAsset("Assets/Generated/FrostWhale.controller");
         var ac = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath("Assets/Generated/FrostWhale.controller");
-        var stIdle = ac.layers[0].stateMachine.AddState("Idle"); var stB = ac.layers[0].stateMachine.AddState("Breach"); stB.motion = clip; ac.layers[0].stateMachine.defaultState = stIdle; whaleCtrl = ac;
+        var stIdle = ac.layers[0].stateMachine.AddState("Idle"); stIdle.motion = clip; stIdle.speed = 0f;   /* M4: idle holds the clip's first frame (the rest pose) */
+        var stB = ac.layers[0].stateMachine.AddState("Breach"); stB.motion = clip; ac.layers[0].stateMachine.defaultState = stIdle; whaleCtrl = ac;
         Debug.Log("[Setup] whale Breach clip " + clip.name + " " + clip.length + "s");
       } else Debug.LogWarning("[Setup] AT_FrostWhale has no Breach clip");
     }

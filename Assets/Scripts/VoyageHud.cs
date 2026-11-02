@@ -75,7 +75,8 @@ namespace AstralTide {
     }
     void Card(float W){
       float a = Mathf.Clamp01(stateT / 1.2f); bool fin = state == State.End;
-      var card = R(W / 2 - 320, 170, 640, fin ? 380 : 330); Box(card, new Color(0.09f, 0.06f, 0.2f, 0.74f * a));
+      Box(new Rect(0, 0, Screen.width, Screen.height), new Color(0.05f, 0.04f, 0.12f, 0.4f * a));   // M4: dim the bloomed arrival flare behind the card
+      var card = R(W / 2 - 320, 170, 640, fin ? 380 : 330); Box(card, new Color(0.09f, 0.06f, 0.2f, 0.88f * a));
       Box(new Rect(card.x, card.y, card.width, 3 * S), new Color(1f, 0.85f, 0.55f, a));
       int fr = FragCount;
       if (!fin){

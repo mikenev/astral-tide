@@ -29,14 +29,14 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _EdgeGlow: 0.6
+    - _EdgeGlow: 0.3
     - _RimPower: 2.5
     - _Tiling: 0.25
     - _UseVertexColor: 0.6
     m_Colors:
     - _Ambient: {r: 0.55, g: 0.65, b: 0.8, a: 1}
     - _LightDir: {r: -0.55135703, g: 0.27563736, b: -0.7874195, a: 0}
-    - _RimColor: {r: 1.2, g: 1.8, b: 2.2, a: 1}
-    - _Tint: {r: 0.92, g: 0.97, b: 1, a: 1}
+    - _RimColor: {r: 0.55, g: 0.8, b: 1, a: 1}
+    - _Tint: {r: 0.78200006, g: 0.8245, b: 0.85, a: 0.85}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
